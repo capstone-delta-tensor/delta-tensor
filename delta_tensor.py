@@ -2,11 +2,11 @@ import uuid
 
 import numpy as np
 
-from sparse_tensor import SparseTensorBSR
+from sparse_tensor_mode_generic import SparseTensorModeGeneric
 
 sparse_tensors = {}
 
-page_size = 12
+MAX_BLOCK_SIZE = 1024
 
 
 def insert_tensor(tensor: np.ndarray):
@@ -20,7 +20,7 @@ def insert_tensor(tensor: np.ndarray):
     indices = np.apply_along_axis(lambda row: row[sparse_filter], 1,
                                   np.indices(indices_shape).reshape(len(indices_shape), -1))
     values = reshaped_tensor[sparse_filter]
-    sparse_tensor = SparseTensorBSR(indices, values, block_shape, tensor.shape)
+    sparse_tensor = SparseTensorModeGeneric(indices, values, block_shape, tensor.shape)
     print(sparse_tensor)
 
     id = uuid.uuid4()
@@ -59,14 +59,18 @@ def get_block_shapes(tensor_shape: tuple) -> tuple:
         block_sizes[i] = block_sizes[i + 1] * tensor_shape[i]
 
     l, r = 0, len(tensor_shape)
-    while l < r:
-        mid = l + (r - l) // 2
-        if block_sizes[mid] > page_size:
-            l = mid + 1
-        else:
-            r = mid
+    mid = l + (r - l) // 2
+    if block_sizes[mid] < MAX_BLOCK_SIZE:
+        pivot = mid
+    else:
+        while l < r:
+            mid = l + (r - l) // 2
+            if block_sizes[mid] > MAX_BLOCK_SIZE:
+                l = mid + 1
+            else:
+                r = mid
+        pivot = l
 
-    pivot = l
     if pivot <= 0:
         return (1,), tensor_shape
     elif pivot >= len(tensor_shape):
@@ -86,6 +90,3 @@ if __name__ == '__main__':
     t_id = insert_tensor(dense)
     tensor = find_tensor_by_id(t_id)
     print(np.array_equal(tensor, dense))
-    # print(insert_tensor(dense))
-    # dense[0:2, 0] = dense[0:2, 2] = dense[2:4, 1] = 1
-    # dense.to_sparse_bsr((2, 1))
