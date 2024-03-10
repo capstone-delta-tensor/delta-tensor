@@ -1,7 +1,6 @@
-import uuid
-
 import numpy as np
 
+from spark_util import SparkUtil
 from sparse_tensor_mode_generic import SparseTensorModeGeneric
 
 sparse_tensors = {}
@@ -9,27 +8,24 @@ sparse_tensors = {}
 MAX_BLOCK_SIZE = 1024
 
 
-def insert_tensor(tensor: np.ndarray):
+def insert_tensor(spark_util: SparkUtil, tensor: np.ndarray) -> str:
     indices_shape, block_shape = get_block_shapes(tensor.shape)
     indices_size = get_size_from_shape(indices_shape)
     block_size = get_size_from_shape(block_shape)
 
     reshaped_tensor = tensor.reshape(indices_size, block_size)
     sparse_filter = np.apply_along_axis(lambda blk: blk.any(), 1, reshaped_tensor)
-    # print(sparse_filter)
     indices = np.apply_along_axis(lambda row: row[sparse_filter], 1,
                                   np.indices(indices_shape).reshape(len(indices_shape), -1))
     values = reshaped_tensor[sparse_filter]
     sparse_tensor = SparseTensorModeGeneric(indices, values, block_shape, tensor.shape)
     print(sparse_tensor)
 
-    id = uuid.uuid4()
-    sparse_tensors[id] = sparse_tensor
-    return id
+    return spark_util.write_tensor(sparse_tensor)
 
 
-def find_tensor_by_id(id: uuid):
-    sparse_tensor = sparse_tensors[id]
+def find_tensor_by_id(spark_util: SparkUtil, id: str) -> np.ndarray:
+    sparse_tensor = spark_util.read_tensor(id)
     indices = sparse_tensor.indices
     values = sparse_tensor.values
     block_shape = sparse_tensor.block_shape
@@ -80,13 +76,3 @@ def get_block_shapes(tensor_shape: tuple) -> tuple:
 
 def get_size_from_shape(shape: tuple) -> int:
     return np.array(shape).prod() if len(shape) != 0 else 1
-
-
-if __name__ == '__main__':
-    dense = np.zeros([3, 2, 2, 3, 2])
-    dense[0, 0, 0, :, :] = np.arange(6).reshape(3, 2)
-    dense[1, 1, 0, :, :] = np.arange(6, 12).reshape(3, 2)
-    dense[2, 1, 1, :, :] = np.arange(12, 18).reshape(3, 2)
-    t_id = insert_tensor(dense)
-    tensor = find_tensor_by_id(t_id)
-    print(np.array_equal(tensor, dense))
