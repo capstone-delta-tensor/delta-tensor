@@ -6,7 +6,7 @@ from delta import configure_spark_with_delta_pip
 from pyspark.sql import SparkSession
 from pyspark.sql.types import *
 
-from sparse_tensor_mode_generic import SparseTensorModeGeneric
+from sparse_tensor import SparseTensorModeGeneric
 
 
 def get_spark_session() -> SparkSession:
@@ -50,6 +50,7 @@ class SparkUtil:
     def read_tensor(self, tensor_id: str) -> SparseTensorModeGeneric:
         df = self.spark.read.format("delta").load("/tmp/delta-tensor")
         filtered_df = df.filter(df.id == tensor_id)
+        filtered_df.show()
         dense_shape, block_shape = filtered_df.select("dense_shape", "block_shape").first()
         indices = np.array(filtered_df.select("index_array").rdd.map(lambda row: row[0]).collect()).transpose()
         values = np.array(filtered_df.select("value").rdd.map(lambda row: row[0]).collect())

@@ -1,3 +1,5 @@
+import torch
+
 from delta_tensor import *
 from spark_util import SparkUtil
 
@@ -14,3 +16,20 @@ if __name__ == '__main__':
     tensor = find_tensor_by_id(spark_util, t_id)
     print(tensor)
     print(np.array_equal(tensor, dense))
+
+    indices = np.array([[0, 1, 1, 1],
+                        [2, 0, 2, 1]])
+    values = np.array([3, 4, 5, -1])
+    dense_shape = (2, 4, 3)
+    sparse = SparseTensorCOO(indices, values, dense_shape)
+    print(sparse)
+    t_id = insert_sparse_tensor(spark_util, sparse)
+    print(t_id)
+    tensor = find_sparse_tensor_by_id(spark_util, t_id)
+    print(tensor)
+
+    torch_sparse = torch.sparse_coo_tensor(torch.tensor(sparse.indices), torch.tensor(sparse.values), dense_shape)
+    torch_result_sparse = torch.sparse_coo_tensor(torch.tensor(tensor.indices), torch.tensor(tensor.values),
+                                                  dense_shape)
+    print(torch_sparse.to_dense())
+    print(torch_result_sparse.to_dense())

@@ -1,11 +1,10 @@
-import numpy as np
+import math
+from collections import defaultdict
 
 from spark_util import SparkUtil
-from sparse_tensor_mode_generic import SparseTensorModeGeneric
+from sparse_tensor import *
 
-sparse_tensors = {}
-
-MAX_BLOCK_SIZE = 1024
+MAX_BLOCK_SIZE = 1024 * 32
 
 
 def insert_tensor(spark_util: SparkUtil, tensor: np.ndarray) -> str:
@@ -19,6 +18,30 @@ def insert_tensor(spark_util: SparkUtil, tensor: np.ndarray) -> str:
                                   np.indices(indices_shape).reshape(len(indices_shape), -1))
     values = reshaped_tensor[sparse_filter]
     sparse_tensor = SparseTensorModeGeneric(indices, values, block_shape, tensor.shape)
+    print(sparse_tensor)
+
+    return spark_util.write_tensor(sparse_tensor)
+
+
+def insert_sparse_tensor(spark_util: SparkUtil, tensor: SparseTensorCOO) -> str:
+    indices_shape, block_shape = get_block_shapes(tensor.dense_shape, is_sparse=True)
+    indices_dict = {}
+    blocks_dict = defaultdict(lambda: np.zeros(block_shape))
+    for i in range(tensor.indices.shape[1]):
+        block_indices = tensor.indices[:, i] // block_shape
+        value_indices = tensor.indices[:, i] % block_shape
+        key = block_indices.tobytes()
+        if key not in indices_dict:
+            indices_dict[key] = block_indices
+        blocks_dict[key][tuple(value_indices)] = tensor.values[i]
+
+    indices = []
+    values = []
+    for key in indices_dict:
+        indices.append(indices_dict[key])
+        values.append(blocks_dict[key].reshape(-1))
+    sparse_tensor = SparseTensorModeGeneric(np.array(indices).transpose(), np.array(values), block_shape,
+                                            tensor.dense_shape)
     print(sparse_tensor)
 
     return spark_util.write_tensor(sparse_tensor)
@@ -49,29 +72,58 @@ def find_tensor_by_id(spark_util: SparkUtil, id: str) -> np.ndarray:
     return tensor.reshape(dense_shape)
 
 
-def get_block_shapes(tensor_shape: tuple) -> tuple:
-    block_sizes = [1] * (len(tensor_shape) + 1)
-    for i in range(len(tensor_shape) - 1, -1, -1):
-        block_sizes[i] = block_sizes[i + 1] * tensor_shape[i]
+def find_sparse_tensor_by_id(spark_util: SparkUtil, id: str) -> SparseTensorCOO:
+    sparse_tensor = spark_util.read_tensor(id)
+    indices = sparse_tensor.indices
+    values = sparse_tensor.values
+    block_shape = sparse_tensor.block_shape
+    dense_shape = sparse_tensor.dense_shape
 
-    l, r = 0, len(tensor_shape)
-    mid = l + (r - l) // 2
-    if block_sizes[mid] < MAX_BLOCK_SIZE:
-        pivot = mid
+    indices_coo = []
+    values_coo = []
+    for i in range(indices.shape[1]):
+        global_base_indices = indices[:, i] * block_shape
+        block = values[i]
+        for j, val in enumerate(block):
+            if val == 0: continue
+            indices_coo.append(global_base_indices + np.unravel_index(j, block_shape))
+            values_coo.append(val)
+
+    return SparseTensorCOO(np.array(indices_coo).transpose(), np.array(values_coo), dense_shape)
+
+
+def get_block_shapes(tensor_shape: tuple, is_sparse: bool = False) -> tuple:
+    if is_sparse:
+        indices_shape = []
+        block_shape = []
+        for i in tensor_shape:
+            blk = math.floor(math.sqrt(i))
+            block_shape.append(blk)
+            indices_shape.append(math.ceil(i / blk))
+        return indices_shape, block_shape
     else:
-        while l < r:
-            mid = l + (r - l) // 2
-            if block_sizes[mid] > MAX_BLOCK_SIZE:
-                l = mid + 1
-            else:
-                r = mid
-        pivot = l
+        block_sizes = [1] * (len(tensor_shape) + 1)
+        for i in range(len(tensor_shape) - 1, -1, -1):
+            block_sizes[i] = block_sizes[i + 1] * tensor_shape[i]
 
-    if pivot <= 0:
-        return (1,), tensor_shape
-    elif pivot >= len(tensor_shape):
-        return tensor_shape, ()
-    return tensor_shape[:pivot], tensor_shape[pivot:]
+        l, r = 0, len(tensor_shape)
+        mid = l + (r - l) // 2
+        if block_sizes[mid] < MAX_BLOCK_SIZE:
+            pivot = mid
+        else:
+            while l < r:
+                mid = l + (r - l) // 2
+                if block_sizes[mid] > MAX_BLOCK_SIZE:
+                    l = mid + 1
+                else:
+                    r = mid
+            pivot = l
+
+        if pivot <= 0:
+            return (1,), tensor_shape
+        elif pivot >= len(tensor_shape):
+            return tensor_shape, ()
+        return tensor_shape[:pivot], tensor_shape[pivot:]
 
 
 def get_size_from_shape(shape: tuple) -> int:
