@@ -1,8 +1,6 @@
-import numpy as np
 import torch
 
-from delta_tensor import *
-from spark_util import SparkUtil
+from api.delta_tensor import *
 
 if __name__ == '__main__':
     spark_util = SparkUtil()
@@ -21,7 +19,8 @@ if __name__ == '__main__':
 
     # Test for sparse tensor
     indices = np.array([[0, 1, 1, 1],
-                        [2, 0, 2, 1]])
+                        [2, 0, 2, 1],
+                        [0, 1, 2, 0]])
     values = np.array([3, 4, 5, -1])
     dense_shape = (2, 4, 3)
     sparse = SparseTensorCOO(indices, values, dense_shape)
@@ -43,7 +42,8 @@ if __name__ == '__main__':
     values = uber_sparse_tensor[-1]
     dense_shape = (183, 24, 1140, 1717)
     sparse = SparseTensorCOO(indices, values, dense_shape)
-    t_id = insert_sparse_tensor(spark_util, sparse, block_shape=(4, 4))
+    t_id = insert_sparse_tensor(spark_util, sparse, block_shape=(2, 2))
     print(t_id)
     tensor = find_sparse_tensor_by_id(spark_util, t_id)
     print(tensor)
+    print(len(tensor.values))
