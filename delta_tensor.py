@@ -23,8 +23,15 @@ def insert_tensor(spark_util: SparkUtil, tensor: np.ndarray) -> str:
     return spark_util.write_tensor(sparse_tensor)
 
 
-def insert_sparse_tensor(spark_util: SparkUtil, tensor: SparseTensorCOO) -> str:
-    indices_shape, block_shape = get_block_shapes(tensor.dense_shape, is_sparse=True)
+def insert_sparse_tensor(spark_util: SparkUtil, tensor: SparseTensorCOO, block_shape: tuple = ()) -> str:
+    if len(block_shape) == 0:
+        _, block_shape = get_block_shapes(tensor.dense_shape, is_sparse=True)
+    elif len(block_shape) != len(tensor.dense_shape):
+        diff = len(tensor.dense_shape) - len(block_shape)
+        block_shape = [1 if i < diff else block_shape[i - diff] for i in range(len(tensor.dense_shape))]
+    elif len(block_shape) > len(tensor.dense_shape):
+        return ""
+
     indices_dict = {}
     blocks_dict = defaultdict(lambda: np.zeros(block_shape))
     for i in range(tensor.indices.shape[1]):

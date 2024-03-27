@@ -36,3 +36,14 @@ if __name__ == '__main__':
                                                   dense_shape)
     print(torch_sparse.to_dense())
     print(torch_result_sparse.to_dense())
+
+    # Test for uber set
+    uber_sparse_tensor = np.loadtxt("dataset/uber/uber.tns", dtype=int).transpose()
+    indices = uber_sparse_tensor[0:-1]
+    values = uber_sparse_tensor[-1]
+    dense_shape = (183, 24, 1140, 1717)
+    sparse = SparseTensorCOO(indices, values, dense_shape)
+    t_id = insert_sparse_tensor(spark_util, sparse, block_shape=(4, 4))
+    print(t_id)
+    tensor = find_sparse_tensor_by_id(spark_util, t_id)
+    print(tensor)
