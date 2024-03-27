@@ -6,7 +6,7 @@ from delta import configure_spark_with_delta_pip
 from pyspark.sql import SparkSession
 from pyspark.sql.types import *
 
-from sparse_tensor import SparseTensorModeGeneric
+from tensor.sparse_tensor import SparseTensorModeGeneric
 
 
 def get_spark_session() -> SparkSession:
