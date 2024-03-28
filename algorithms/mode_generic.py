@@ -1,5 +1,6 @@
 import math
 from collections import defaultdict
+from scipy.sparse import csr_matrix, csc_matrix
 
 from tensor.sparse_tensor import *
 
@@ -89,6 +90,39 @@ def create_coo_from_mode_generic(sparse_tensor: SparseTensorModeGeneric) -> Spar
 
     return SparseTensorCOO(np.array(indices_coo).transpose(), np.array(values_coo), dense_shape)
 
+def create_csr_from_ndarray(sparse_tensor: np.ndarray) -> SparseTensorCSR:
+    tensor_2d = sparse_tensor.reshape(-1, sparse_tensor.shape[-1])
+    csr = csr_matrix(tensor_2d)
+    indices = csr.indices
+    indptr = csr.indptr
+    dense_shape = sparse_tensor.shape
+    return SparseTensorCSR(data=csr.data.astype(float), indices=indices, indptr=indptr, dense_shape=dense_shape)
+
+def create_csc_from_ndarray(sparse_tensor: np.ndarray) -> SparseTensorCSC:
+    tensor_2d = sparse_tensor.reshape(sparse_tensor.shape[0], -1)
+    csc = csc_matrix(tensor_2d)
+    indices = csc.indices
+    indptr = csc.indptr
+    dense_shape = sparse_tensor.shape
+    return SparseTensorCSC(data=csc.data.astype(float), indices=indices, indptr=indptr, dense_shape=dense_shape)
+
+def create_mode_generic_from_csr(sparse_tensor_csr: SparseTensorCSR) -> SparseTensorModeGeneric:
+    csr = csr_matrix((sparse_tensor_csr.data, sparse_tensor_csr.indices, sparse_tensor_csr.indptr), shape=sparse_tensor_csr.dense_shape)
+    rows, cols = csr.nonzero()
+    data = csr.data
+    indices = np.vstack([rows, cols])
+    _, block_shape = get_block_shapes(sparse_tensor_csr.dense_shape, is_sparse=True)
+    
+    return SparseTensorModeGeneric(indices=indices, values=data, block_shape=block_shape, dense_shape=sparse_tensor_csr.dense_shape)
+
+def create_mode_generic_from_csc(sparse_tensor_csc: SparseTensorCSC) -> SparseTensorModeGeneric:
+    csc = csc_matrix((sparse_tensor_csc.data, sparse_tensor_csc.indices, sparse_tensor_csc.indptr), shape=sparse_tensor_csc.dense_shape)
+    rows, cols = csc.nonzero()
+    data = csc.data
+    indices = np.vstack([rows, cols])
+    _, block_shape = get_block_shapes(sparse_tensor_csc.dense_shape, is_sparse=True)
+    
+    return SparseTensorModeGeneric(indices=indices, values=data, block_shape=block_shape, dense_shape=sparse_tensor_csc.dense_shape)
 
 def get_block_shapes(tensor_shape: tuple, is_sparse: bool = False) -> tuple:
     if is_sparse:

@@ -8,10 +8,17 @@ def insert_tensor(spark_util: SparkUtil, tensor: np.ndarray) -> str:
     return spark_util.write_tensor(sparse_tensor)
 
 
-def insert_sparse_tensor(spark_util: SparkUtil, tensor: SparseTensorCOO, block_shape: tuple = ()) -> str:
-    sparse_tensor = create_mode_generic_from_coo(tensor, block_shape)
+def insert_sparse_tensor(spark_util: SparkUtil, tensor, block_shape: tuple = ()) -> str:
+    if isinstance(tensor, SparseTensorCOO):
+        sparse_tensor = create_mode_generic_from_coo(tensor, block_shape)
+    elif isinstance(tensor, SparseTensorCSR):
+        sparse_tensor = create_mode_generic_from_csr(tensor)
+    elif isinstance(tensor, SparseTensorCSC):
+        sparse_tensor = create_mode_generic_from_csc(tensor)
+    else:
+        raise TypeError("Unsupported tensor format.")
+    
     return spark_util.write_tensor(sparse_tensor)
-
 
 def find_tensor_by_id(spark_util: SparkUtil, id: str) -> np.ndarray:
     sparse_tensor = spark_util.read_tensor(id)
