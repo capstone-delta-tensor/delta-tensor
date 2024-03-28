@@ -1,6 +1,5 @@
 delta-spark==3.1.0
 deltalake==0.15.3
-deltatorch @ git+https://github.com/delta-incubator/deltatorch@1694f8fb1e14e2fde9ececca256d3f74687a909c
 evalidate==2.0.2
 filelock==3.13.1
 fsspec==2024.2.0
