@@ -1,23 +1,44 @@
-from algorithms.mode_generic import *
-from spark_util.spark_util_mode_generic import SparkUtil
+import time
+
+from algorithms.sparse import *
 from tensor.sparse_tensor import SparseTensorCOO
+from util.spark_util import SparkUtil
 
 
-def insert_tensor(spark_util: SparkUtil, tensor: np.ndarray) -> str:
-    sparse_tensor = create_mode_generic_from_ndarray(tensor)
-    return spark_util.write_tensor(sparse_tensor)
+class DeltaTensor:
+    def __init__(self, spark_util: SparkUtil):
+        self.spark_util = spark_util
 
+    def save_dense_tensor(self, tensor: np.ndarray) -> str:
+        return self.spark_util.write_dense_tensor(tensor)
 
-def insert_sparse_tensor(spark_util: SparkUtil, tensor: SparseTensorCOO, block_shape: tuple = ()) -> str:
-    sparse_tensor = create_mode_generic_from_coo(tensor, block_shape)
-    return spark_util.write_tensor(sparse_tensor)
+    def save_dense_tensor_as_sparse(self, tensor: np.ndarray) -> str:
+        # TODO support more types
+        sparse_tensor = ndarray_to_mode_generic(tensor)
+        return self.spark_util.write_sparse_tensor(sparse_tensor)
 
+    def save_sparse_tensor(self, tensor: SparseTensorCOO, layout: SparseTensorLayout, block_shape: tuple = ()) -> str:
+        start_time = time.time()
+        sparse_tensor = coo_to_sparse(tensor, layout, block_shape)
+        print(f"Time to encoding {time.time() - start_time} seconds")
+        start_time = time.time()
+        id = self.spark_util.write_tensor(sparse_tensor, is_sparse=True)
+        print(f"Time to write tensor {time.time() - start_time} seconds")
+        return id
 
-def find_tensor_by_id(spark_util: SparkUtil, id: str) -> np.ndarray:
-    sparse_tensor = spark_util.read_tensor(id)
-    return create_ndarray_from_mode_generic(sparse_tensor)
+    def get_dense_tensor_by_id(self, id: str) -> np.ndarray:
+        return self.spark_util.read_dense_tensor(id)
 
+    def get_sparse_tensor_as_dense_by_id(self, id: str) -> np.ndarray:
+        # TODO support more types
+        sparse_tensor = self.spark_util.read_sparse_tensor(id, layout=SparseTensorLayout.MODE_GENERIC)
+        return mode_generic_to_ndarray(sparse_tensor)
 
-def find_sparse_tensor_by_id(spark_util: SparkUtil, id: str) -> SparseTensorCOO:
-    sparse_tensor = spark_util.read_tensor(id)
-    return create_coo_from_mode_generic(sparse_tensor)
+    def get_sparse_tensor_by_id(self, id: str, layout: SparseTensorLayout) -> SparseTensorCOO:
+        start_time = time.time()
+        sparse_tensor = self.spark_util.read_tensor(id, is_sparse=True, layout=layout)
+        print(f"Time to read tensor {time.time() - start_time} seconds")
+        start_time = time.time()
+        sparse_coo = sparse_to_coo(sparse_tensor)
+        print(f"Time to decode tensor {time.time() - start_time} seconds")
+        return sparse_coo
