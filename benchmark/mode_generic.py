@@ -1,5 +1,3 @@
-import time
-
 import torch
 
 from api.delta_tensor import *
