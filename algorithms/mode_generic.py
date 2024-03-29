@@ -38,12 +38,12 @@ def create_mode_generic_from_coo(tensor: SparseTensorCOO, block_shape: tuple = (
             indices_dict[key] = block_indices
         blocks_dict[key][tuple(value_indices)] = tensor.values[i]
 
-    indices = []
-    values = []
-    for key in indices_dict:
-        indices.append(indices_dict[key])
-        values.append(blocks_dict[key].reshape(-1))
-    return SparseTensorModeGeneric(np.array(indices).transpose(), np.array(values), block_shape,
+    indices = np.zeros((len(indices_dict), len(block_shape)), dtype=int)
+    values = np.zeros((len(indices_dict), get_size_from_shape(block_shape)))
+    for i, key in enumerate(indices_dict):
+        indices[i] = indices_dict[key]
+        values[i] = blocks_dict[key].reshape(-1)
+    return SparseTensorModeGeneric(indices.transpose(), values, block_shape,
                                    tensor.dense_shape)
 
 

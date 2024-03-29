@@ -19,7 +19,7 @@ def example_dense_tensor(spark_util: SparkUtil):
 def example_sparse_tensor(spark_util: SparkUtil):
     indices = np.array([[0, 1, 1, 1],
                         [2, 0, 2, 1],
-                        [0, 1, 2, 0]])
+                        [0, 1, 2, 1]])
     values = np.array([3, 4, 5, -1])
     dense_shape = (2, 4, 3)
     sparse = SparseTensorCOO(indices, values, dense_shape)
@@ -63,4 +63,4 @@ if __name__ == '__main__':
     example_sparse_tensor(spark_util)
 
     # Test for uber set
-    benchmark_uber_dataset(spark_util)
+    # benchmark_uber_dataset(spark_util)
