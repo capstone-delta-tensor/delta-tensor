@@ -6,10 +6,10 @@ from tensor.sparse_tensor import *
 MAX_BLOCK_SIZE = 1024 * 32
 
 
-def create_mode_generic_from_ndarray(tensor: np.ndarray) -> SparseTensorModeGeneric:
-    indices_shape, block_shape = get_block_shapes(tensor.shape)
-    indices_size = get_size_from_shape(indices_shape)
-    block_size = get_size_from_shape(block_shape)
+def ndarray_to_mode_generic(tensor: np.ndarray) -> SparseTensorModeGeneric:
+    indices_shape, block_shape = __get_block_shapes(tensor.shape)
+    indices_size = __get_size_from_shape(indices_shape)
+    block_size = __get_size_from_shape(block_shape)
 
     reshaped_tensor = tensor.reshape(indices_size, block_size)
     sparse_filter = np.apply_along_axis(lambda blk: blk.any(), 1, reshaped_tensor)
@@ -19,9 +19,41 @@ def create_mode_generic_from_ndarray(tensor: np.ndarray) -> SparseTensorModeGene
     return SparseTensorModeGeneric(indices, values, block_shape, tensor.shape)
 
 
-def create_mode_generic_from_coo(tensor: SparseTensorCOO, block_shape: tuple = ()) -> SparseTensorModeGeneric:
+def coo_to_sparse(tensor: SparseTensorCOO, layout: SparseTensorLayout = SparseTensorLayout.MODE_GENERIC,
+                  block_shape: tuple = ()) -> SparseTensorCOO | SparseTensorCSR | SparseTensorCSC | SparseTensorCSF | SparseTensorModeGeneric:
+    match layout:
+        case SparseTensorLayout.COO:
+            return tensor
+        case SparseTensorLayout.CSR:
+            return coo_to_csr(tensor)
+        case SparseTensorLayout.CSC:
+            return coo_to_csc(tensor)
+        case SparseTensorLayout.CSF:
+            return coo_to_csf(tensor)
+        case SparseTensorLayout.MODE_GENERIC:
+            return coo_to_mode_generic(tensor, block_shape)
+        case _:
+            raise ValueError(f"Layout {layout} not supported")
+
+
+def coo_to_csr(tensor: SparseTensorCOO) -> SparseTensorCSR:
+    # TODO @evanyfzhou
+    raise Exception("Not implemented")
+
+
+def coo_to_csc(tensor: SparseTensorCOO) -> SparseTensorCSC:
+    # TODO @evanyfzhou
+    raise Exception("Not implemented")
+
+
+def coo_to_csf(tensor: SparseTensorCOO) -> SparseTensorCSF:
+    # TODO @kevinvan13
+    raise Exception("Not implemented")
+
+
+def coo_to_mode_generic(tensor: SparseTensorCOO, block_shape: tuple = ()) -> SparseTensorModeGeneric:
     if len(block_shape) == 0:
-        _, block_shape = get_block_shapes(tensor.dense_shape, is_sparse=True)
+        _, block_shape = __get_block_shapes(tensor.dense_shape, is_sparse=True)
     elif len(block_shape) != len(tensor.dense_shape):
         diff = len(tensor.dense_shape) - len(block_shape)
         block_shape = [1 if i < diff else block_shape[i - diff] for i in range(len(tensor.dense_shape))]
@@ -39,7 +71,7 @@ def create_mode_generic_from_coo(tensor: SparseTensorCOO, block_shape: tuple = (
         blocks_dict[key][tuple(value_indices)] = tensor.values[i]
 
     indices = np.zeros((len(indices_dict), len(block_shape)), dtype=int)
-    values = np.zeros((len(indices_dict), get_size_from_shape(block_shape)))
+    values = np.zeros((len(indices_dict), __get_size_from_shape(block_shape)))
     for i, key in enumerate(indices_dict):
         indices[i] = indices_dict[key]
         values[i] = blocks_dict[key].reshape(-1)
@@ -47,11 +79,11 @@ def create_mode_generic_from_coo(tensor: SparseTensorCOO, block_shape: tuple = (
                                    tensor.dense_shape)
 
 
-def create_ndarray_from_mode_generic(sparse_tensor: SparseTensorModeGeneric) -> np.ndarray:
+def mode_generic_to_ndarray(sparse_tensor: SparseTensorModeGeneric) -> np.ndarray:
     indices = sparse_tensor.indices
     values = sparse_tensor.values
     block_shape = sparse_tensor.block_shape
-    block_size = get_size_from_shape(block_shape)
+    block_size = __get_size_from_shape(block_shape)
     dense_shape = sparse_tensor.dense_shape
 
     if len(block_shape) == 0:
@@ -60,7 +92,7 @@ def create_ndarray_from_mode_generic(sparse_tensor: SparseTensorModeGeneric) -> 
         indices_shape = (1,)
     else:
         indices_shape = dense_shape[:-len(block_shape)]
-    indices_size = get_size_from_shape(indices_shape)
+    indices_size = __get_size_from_shape(indices_shape)
     mul = [1] * len(indices_shape)
     for i in range(len(mul) - 1, 0, -1):
         mul[i - 1] = mul[i] * indices_shape[i]
@@ -71,7 +103,39 @@ def create_ndarray_from_mode_generic(sparse_tensor: SparseTensorModeGeneric) -> 
     return tensor.reshape(dense_shape)
 
 
-def create_coo_from_mode_generic(sparse_tensor: SparseTensorModeGeneric) -> SparseTensorCOO:
+def sparse_to_coo(
+        sparse_tensor: SparseTensorCOO | SparseTensorCSR | SparseTensorCSC | SparseTensorCSF | SparseTensorModeGeneric) -> SparseTensorCOO:
+    match sparse_tensor.layout:
+        case SparseTensorLayout.COO:
+            return sparse_tensor
+        case SparseTensorLayout.CSR:
+            return csr_to_coo(sparse_tensor)
+        case SparseTensorLayout.CSC:
+            return csc_to_coo(sparse_tensor)
+        case SparseTensorLayout.CSF:
+            return csf_to_coo(sparse_tensor)
+        case SparseTensorLayout.MODE_GENERIC:
+            return mode_generic_to_coo(sparse_tensor)
+        case _:
+            raise ValueError(f"Layout {sparse_tensor.layout} not supported")
+
+
+def csr_to_coo(sparse_tensor: SparseTensorCSR) -> SparseTensorCOO:
+    # TODO @evanyfzhou
+    raise Exception("Not implemented")
+
+
+def csc_to_coo(sparse_tensor: SparseTensorCSC) -> SparseTensorCOO:
+    # TODO @evanyfzhou
+    raise Exception("Not implemented")
+
+
+def csf_to_coo(sparse_tensor: SparseTensorCSF) -> SparseTensorCOO:
+    # TODO @kevinvan13
+    raise Exception("Not implemented")
+
+
+def mode_generic_to_coo(sparse_tensor: SparseTensorModeGeneric) -> SparseTensorCOO:
     indices = sparse_tensor.indices
     values = sparse_tensor.values
     block_shape = sparse_tensor.block_shape
@@ -90,7 +154,7 @@ def create_coo_from_mode_generic(sparse_tensor: SparseTensorModeGeneric) -> Spar
     return SparseTensorCOO(np.array(indices_coo).transpose(), np.array(values_coo), dense_shape)
 
 
-def get_block_shapes(tensor_shape: tuple, is_sparse: bool = False) -> tuple:
+def __get_block_shapes(tensor_shape: tuple, is_sparse: bool = False) -> tuple:
     if is_sparse:
         indices_shape = []
         block_shape = []
@@ -124,5 +188,5 @@ def get_block_shapes(tensor_shape: tuple, is_sparse: bool = False) -> tuple:
         return tensor_shape[:pivot], tensor_shape[pivot:]
 
 
-def get_size_from_shape(shape: tuple) -> int:
+def __get_size_from_shape(shape: tuple) -> int:
     return np.array(shape).prod() if len(shape) != 0 else 1
