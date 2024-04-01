@@ -55,16 +55,58 @@ class SparkUtil:
         raise Exception("Not implemented")
 
     def __write_csr(self, sparse_tensor: SparseTensorCSR) -> str:
-        # TODO @evanyfzhou
-        # Please include layout as a column in the delta-table
-        # df.write.format("delta").mode("append").save("/tmp/delta-tensor-csr")
-        raise Exception("Not implemented")
-
+        tensor_id = str(uuid.uuid4())
+        crow_indices = sparse_tensor.crow_indices.tolist()
+        col_indices = sparse_tensor.col_indices.tolist()
+        values = sparse_tensor.values.tolist()
+        dense_shape = sparse_tensor.dense_shape
+        layout = sparse_tensor.layout.name
+        data = {
+            "id": tensor_id,
+            "layout": layout,
+            "dense_shape": list(dense_shape),
+            "crow_indices": crow_indices,
+            "col_indices": col_indices,
+            "value": values,
+        }
+        schema = StructType([
+            StructField("id", StringType(), False),
+            StructField("layout", StringType(), False),
+            StructField("dense_shape", ArrayType(IntegerType())),
+            StructField("crow_indices", ArrayType(IntegerType())),
+            StructField("col_indices", ArrayType(IntegerType())),
+            StructField("value", ArrayType(DoubleType())),
+        ])
+        df = self.spark.createDataFrame([data], schema)
+        df.write.format("delta").mode("append").save("/tmp/delta-tensor-csr")
+        return tensor_id
+    
     def __write_csc(self, sparse_tensor: SparseTensorCSC) -> str:
-        # TODO @evanyfzhou
-        # Please include layout as a column in the delta-table
-        # df.write.format("delta").mode("append").save("/tmp/delta-tensor-csc")
-        raise Exception("Not implemented")
+        tensor_id = str(uuid.uuid4())
+        ccol_indices = sparse_tensor.ccol_indices.tolist()
+        row_indices = sparse_tensor.row_indices.tolist()
+        values = sparse_tensor.values.tolist()
+        dense_shape = sparse_tensor.dense_shape
+        layout = sparse_tensor.layout.name
+        data = {
+            "id": tensor_id,
+            "layout": layout,
+            "dense_shape": list(dense_shape),
+            "ccol_indices": ccol_indices,
+            "row_indices": row_indices,
+            "value": values,
+        }
+        schema = StructType([
+            StructField("id", StringType(), False),
+            StructField("layout", StringType(), False),
+            StructField("dense_shape", ArrayType(IntegerType())),
+            StructField("ccol_indices", ArrayType(IntegerType())),
+            StructField("row_indices", ArrayType(IntegerType())),
+            StructField("value", ArrayType(DoubleType())),
+        ])
+        df = self.spark.createDataFrame([data], schema)
+        df.write.format("delta").mode("append").save("/tmp/delta-tensor-csc")
+        return tensor_id
 
     def __write_csf(self, sparse_tensor: SparseTensorCSF) -> str:
         # TODO @kevinvan13
@@ -132,12 +174,22 @@ class SparkUtil:
         raise Exception("Not implemented")
 
     def __read_csr(self, tensor_id: str) -> SparseTensorCSR:
-        # TODO @evanyfzhou
-        raise Exception("Not implemented")
+        df = self.spark.read.format("delta").load("/tmp/delta-tensor-csr")
+        filtered_df = df.filter(df.id == tensor_id)
+        dense_shape = filtered_df.select("dense_shape").first()[0]
+        crow_indices = np.array(filtered_df.select("crow_indices").rdd.map(lambda row: row[0]).collect())[0]
+        col_indices = np.array(filtered_df.select("col_indices").rdd.map(lambda row: row[0]).collect())[0]
+        values = np.array(filtered_df.select("value").rdd.map(lambda row: row[0]).collect())[0]
+        return SparseTensorCSR(values, col_indices, crow_indices, dense_shape)
 
     def __read_csc(self, tensor_id: str) -> SparseTensorCSC:
-        # TODO @evanyfzhou
-        raise Exception("Not implemented")
+        df = self.spark.read.format("delta").load("/tmp/delta-tensor-csc")
+        filtered_df = df.filter(df.id == tensor_id)
+        dense_shape = filtered_df.select("dense_shape").first()[0]
+        ccol_indices = np.array(filtered_df.select("ccol_indices").rdd.map(lambda row: row[0]).collect())[0]
+        row_indices = np.array(filtered_df.select("row_indices").rdd.map(lambda row: row[0]).collect())[0]
+        values = np.array(filtered_df.select("value").rdd.map(lambda row: row[0]).collect())[0]
+        return SparseTensorCSC(values, row_indices, ccol_indices, dense_shape)
 
     def __read_csf(self, tensor_id: str) -> SparseTensorCSF:
         # TODO @kevinvan13

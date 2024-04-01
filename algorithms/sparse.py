@@ -1,4 +1,5 @@
 import math
+import torch
 from collections import defaultdict
 
 from tensor.sparse_tensor import *
@@ -37,13 +38,14 @@ def coo_to_sparse(tensor: SparseTensorCOO, layout: SparseTensorLayout = SparseTe
 
 
 def coo_to_csr(tensor: SparseTensorCOO) -> SparseTensorCSR:
-    # TODO @evanyfzhou
-    raise Exception("Not implemented")
-
+    coo = torch.sparse_coo_tensor(tensor.indices, tensor.values, tensor.dense_shape, dtype=torch.float32)
+    csr = coo.to_sparse_csr()
+    return SparseTensorCSR(csr.values().numpy(), csr.col_indices().numpy(), csr.crow_indices().numpy(), tensor.dense_shape)
 
 def coo_to_csc(tensor: SparseTensorCOO) -> SparseTensorCSC:
-    # TODO @evanyfzhou
-    raise Exception("Not implemented")
+    coo = torch.sparse_coo_tensor(tensor.indices, tensor.values, tensor.dense_shape, dtype=torch.float32)
+    csc = coo.to_sparse_csc()
+    return SparseTensorCSC(csc.values().numpy(), csc.row_indices.numpy(), csc.ccol_indices().numpy(), tensor.dense_shape)
 
 
 def coo_to_csf(tensor: SparseTensorCOO) -> SparseTensorCSF:
@@ -121,14 +123,19 @@ def sparse_to_coo(
 
 
 def csr_to_coo(sparse_tensor: SparseTensorCSR) -> SparseTensorCOO:
-    # TODO @evanyfzhou
-    raise Exception("Not implemented")
+    csr = torch.sparse_csr_tensor(sparse_tensor.crow_indices, sparse_tensor.col_indices, sparse_tensor.values, sparse_tensor.dense_shape, dtype=torch.float32)
+    coo = csr.to_sparse_coo()
+    indices = coo.indices().numpy()
+    values = coo.values().numpy()    
+    return SparseTensorCOO(indices, values, sparse_tensor.dense_shape)
 
 
 def csc_to_coo(sparse_tensor: SparseTensorCSC) -> SparseTensorCOO:
-    # TODO @evanyfzhou
-    raise Exception("Not implemented")
-
+    csc = torch.sparse_csc_tensor(sparse_tensor.ccol_indices, sparse_tensor.row_indices, sparse_tensor.values, sparse_tensor.dense_shape, dtype=torch.float32)
+    coo = csc.to_sparse_coo()
+    indices = coo.indices().numpy()
+    values = coo.values().numpy()
+    return SparseTensorCOO(indices, values, sparse_tensor.dense_shape)
 
 def csf_to_coo(sparse_tensor: SparseTensorCSF) -> SparseTensorCOO:
     # TODO @kevinvan13

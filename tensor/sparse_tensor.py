@@ -23,23 +23,29 @@ class SparseTensorCOO:
 
 
 class SparseTensorCSR:
-    def __init__(self, dense_shape: tuple):
-        # TODO @evanyfzhou Add fields as needed
+    def __init__(self, values: np.ndarray, col_indices: np.ndarray, crow_indices: np.ndarray, dense_shape: tuple):
+        self.values = values
+        self.col_indices = col_indices
+        self.crow_indices = crow_indices
         self.dense_shape = dense_shape
         self.layout = SparseTensorLayout.CSR
 
     def __str__(self):
-        return f"SparseTensor(\ndense_shape={self.dense_shape},\nlayout={self.layout})"
+        return (f"SparseTensor(\nvalues=\n{self.values},\ncol_indices=\n{self.col_indices},\n"
+                f"crow_indices=\n{self.crow_indices},\ndense_shape={self.dense_shape},\nlayout={self.layout})")
 
 
 class SparseTensorCSC:
-    def __init__(self, dense_shape: tuple):
-        # TODO @evanyfzhou Add fields as needed
+    def __init__(self, values: np.ndarray, row_indices: np.ndarray, ccol_indices: np.ndarray, dense_shape: tuple):
+        self.values = values
+        self.row_indices = row_indices
+        self.ccol_indices = ccol_indices
         self.dense_shape = dense_shape
         self.layout = SparseTensorLayout.CSC
 
     def __str__(self):
-        return f"SparseTensor(\ndense_shape={self.dense_shape},\nlayout={self.layout})"
+        return (f"SparseTensor(\nvalues=\n{self.values},\nrow_indices=\n{self.row_indices},\n"
+                f"ccol_indices=\n{self.ccol_indices},\ndense_shape={self.dense_shape},\nlayout={self.layout})")
 
 
 class SparseTensorCSF:
