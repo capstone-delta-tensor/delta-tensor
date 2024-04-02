@@ -113,8 +113,29 @@ class SparkUtil:
     def __write_coo(self, sparse_tensor: SparseTensorCOO) -> str:
         # TODO @920fandanny
         # Please include layout as a column in the delta-table
+        tensor_id = str(uuid.uuid4())
+        indices = sparse_tensor.indices
+        values = sparse_tensor.values
+        layout = sparse_tensor.layout
+        data = [{
+            "id": tensor_id,
+            "layout": layout.name,
+            "indices": indices[i].tolist(),
+            "value": values[i].tolist(),
+        } for i in range(len(values))]
+        schema = StructType([
+            StructField("id", StringType(), False),
+            StructField("layout", StringType(), False),
+            StructField("indices", ArrayType(IntegerType())),
+            StructField("value", ArrayType(DoubleType())),
+        ])
+        df = self.spark.createDataFrame(data, schema)
+
         # df.write.format("delta").mode("append").save("/tmp/delta-tensor-coo")
-        raise Exception("Not implemented")
+        df.write.format("delta").mode("append").save("/tmp/delta-tensor-coo")
+        return tensor_id
+    
+        # raise Exception("Not implemented")
 
     def __write_csr(self, sparse_tensor: SparseTensorCSR) -> str:
         tensor_id = str(uuid.uuid4())
@@ -320,7 +341,12 @@ class SparkUtil:
 
     def __read_coo(self, tensor_id: str) -> SparseTensorCOO:
         # TODO @920fandanny
-        raise Exception("Not implemented")
+        df = self.spark.read.format("delta").load("/tmp/delta-tensor-coo")
+        filtered_df = df.filter(df.id == tensor_id)
+        indices, values = filtered_df.select("indices", "value").first()
+        return SparseTensorCOO(indices, values)
+    
+        # raise Exception("Not implemented")
 
     def __read_csr(self, tensor_id: str) -> SparseTensorCSR:
         df = self.spark.read.format("delta").load("/tmp/delta-tensor-csr")
