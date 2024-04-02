@@ -7,12 +7,14 @@ from pyspark.sql.types import *
 
 from tensor.sparse_tensor import *
 
+MAX_DIGITS = 4 
+CHUNK_SIZE = 50000 
 
 def get_spark_session() -> SparkSession:
     builder = pyspark.sql.SparkSession.builder.appName("DeltaTensor") \
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
-        .config("spark.driver.memory", "16g")
+        .config("spark.driver.memory", "4g")
 
     return configure_spark_with_delta_pip(builder).getOrCreate()
 
@@ -121,9 +123,6 @@ class SparkUtil:
         # df.write.format("delta").mode("append").save("/tmp/delta-tensor-csf")
         tensor_id = str(uuid.uuid4())
 
-        # Assume a maximum of 9999 chunks for padding purposes
-        max_digits = 4  # Adjust based on the maximum expected number of chunks
-
 
         # Non-chunked data
         fptr_zero = [int(x) for x in sparse_tensor.fptrs[0]]
@@ -134,19 +133,18 @@ class SparkUtil:
         layout = sparse_tensor.layout.name
 
 
-        chunk_size = 50000
         # Processing and chunking data with direct conversion to int
-        fptr_two_chunks = [[int(x) for x in chunk] for chunk in self.split_array(sparse_tensor.fptrs[2], chunk_size)]
-        fid_two_chunks = [[int(x) for x in chunk] for chunk in self.split_array(sparse_tensor.fids[2], chunk_size)]
-        fid_three_chunks = [[int(x) for x in chunk] for chunk in self.split_array(sparse_tensor.fids[3], chunk_size)]
-        values_chunks = [[float(x) for x in chunk] for chunk in self.split_array(sparse_tensor.values.astype(float).tolist(), chunk_size)]
+        fptr_two_chunks = [[int(x) for x in chunk] for chunk in self.split_array(sparse_tensor.fptrs[2], CHUNK_SIZE)]
+        fid_two_chunks = [[int(x) for x in chunk] for chunk in self.split_array(sparse_tensor.fids[2], CHUNK_SIZE)]
+        fid_three_chunks = [[int(x) for x in chunk] for chunk in self.split_array(sparse_tensor.fids[3], CHUNK_SIZE)]
+        values_chunks = [[float(x) for x in chunk] for chunk in self.split_array(sparse_tensor.values.astype(float).tolist(), CHUNK_SIZE)]
 
 
         
         chunked_data = []
         for i in range(max(len(fptr_two_chunks), len(fid_two_chunks), len(fid_three_chunks), len(values_chunks))):
             # Format the chunk index with leading zeros
-            padded_index = str(i).zfill(max_digits)  # Pads the index with leading zeros
+            padded_index = str(i).zfill(MAX_DIGITS)  # Pads the index with leading zeros
             chunk_id = f"{tensor_id}_{padded_index}"
             chunk_data = {
                 "id": chunk_id,
@@ -266,12 +264,6 @@ class SparkUtil:
     def __read_csf(self, tensor_id: str) -> SparseTensorCSF:
         df = self.spark.read.format("delta").load("/tmp/delta-tensor-csf")
         filtered_df = df.filter(df.tensor_id == tensor_id).sort("id")
-        '''
-        filtered_df.select("id").show(50, truncate=False)
-        df.select('tensor_id', 'fptr_two_chunk', 'fid_three_chunk', 'values_chunk').show(34)
-        # Print the number of rows in the filtered DataFrame
-        print("Number of rows in filtered DataFrame: ", filtered_df.count())
-        '''
 
         # Initialize empty lists for chunked data
         fptr_two = []

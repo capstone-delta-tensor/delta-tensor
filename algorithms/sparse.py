@@ -2,6 +2,7 @@ import math
 import torch
 from collections import Counter, deque, defaultdict
 
+
 from tensor.sparse_tensor import *
 
 MAX_BLOCK_SIZE = 1024 * 32
@@ -76,9 +77,6 @@ def coo_to_csf(tensor: SparseTensorCOO) -> SparseTensorCSF:
                     queue.append((tensor.indices[row+1], row + 1, start, val))
                     start += val
     
-
-    
-
     return SparseTensorCSF(fptrs, fids, tensor.values, tensor.dense_shape)
 
 
@@ -106,6 +104,7 @@ def coo_to_mode_generic(tensor: SparseTensorCOO, block_shape: tuple = ()) -> Spa
     for i, key in enumerate(indices_dict):
         indices[i] = indices_dict[key]
         values[i] = blocks_dict[key].reshape(-1)
+
     return SparseTensorModeGeneric(indices.transpose(), values, block_shape,
                                    tensor.dense_shape)
 
@@ -170,7 +169,6 @@ def csf_to_coo(sparse_tensor: SparseTensorCSF) -> SparseTensorCOO:
     # TODO @kevinvan13
     expanded_indices = []
     expanded_values = []
-    depth = len(sparse_tensor.fids)  # Assuming depth is consistent across fids
 
     # Loop through all values to expand each row back to its original indices
     for val_index in range(len(sparse_tensor.values)):

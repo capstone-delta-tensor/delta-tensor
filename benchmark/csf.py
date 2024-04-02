@@ -42,7 +42,7 @@ def benchmark_uber_dataset(delta_tensor: DeltaTensor) -> None:
     start = time.time()
     retrieved = delta_tensor.get_sparse_tensor_by_id(t_id, layout=SparseTensorLayout.CSF)
     print(f"Tensor retrieving time: {time.time() - start} seconds")
-    print(sparse == retrieved)
+    print("Data consistency: ", sparse == retrieved)
 
 
 if __name__ == '__main__':

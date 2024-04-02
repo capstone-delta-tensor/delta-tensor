@@ -20,6 +20,7 @@ class SparseTensorCOO:
 
     def __str__(self):
         return f"SparseTensor(\nindices=\n{self.indices},\nvalues=\n{self.values},\ndense_shape={self.dense_shape},\nlayout={self.layout})"
+    
     def __eq__(self, other):
         if not isinstance(other, SparseTensorCOO):
             # don't attempt to compare against unrelated types
@@ -87,6 +88,15 @@ class SparseTensorCSF:
         formatted_fids = self._format_array(self.fids)
         formatted_vals = self._format_array(self.values)
         return f"SparseTensor(\nfptrs=\n{formatted_fptrs},\nfids=\n{formatted_fids},\nvalues=\n{formatted_vals},\ndense_shape={self.dense_shape},\nlayout={self.layout})"
+
+    def __eq__(self, other):
+        if not isinstance(other, SparseTensorCSF):
+            return NotImplemented
+        
+        return (np.array_equal(self.fptrs, other.fptrs) and
+                np.array_equal(self.fids, other.fids) and
+                np.array_equal(self.values, other.values) and
+                self.dense_shape == other.dense_shape)
 
     def expand_row(self, val_index):
         # Initialize the path with None values
