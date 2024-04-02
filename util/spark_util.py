@@ -112,30 +112,29 @@ class SparkUtil:
 
     def __write_coo(self, sparse_tensor: SparseTensorCOO) -> str:
         # TODO @920fandanny
-        # Please include layout as a column in the delta-table
         tensor_id = str(uuid.uuid4())
-        indices = sparse_tensor.indices
-        values = sparse_tensor.values
-        layout = sparse_tensor.layout
+        indices = sparse_tensor.indices.tolist()  # Convert ndarray to list
+        values = [float(value) for value in sparse_tensor.values.tolist()]  # Convert ndarray to list and ensure all values are floats
+        layout = sparse_tensor.layout.name  # Convert SparseTensorLayout to string
         data = [{
             "id": tensor_id,
-            "layout": layout.name,
-            "indices": indices[i].tolist(),
-            "value": values[i].tolist(),
-        } for i in range(len(values))]
+            "layout": layout,
+            "indices": indices,
+            "value": values,
+            "dense_shape": list(sparse_tensor.dense_shape),  # Convert tuple to list
+        }]
         schema = StructType([
             StructField("id", StringType(), False),
             StructField("layout", StringType(), False),
-            StructField("indices", ArrayType(IntegerType())),
+            StructField("indices", ArrayType(ArrayType(IntegerType()))),
             StructField("value", ArrayType(DoubleType())),
+            StructField("dense_shape", ArrayType(IntegerType())),  
         ])
         df = self.spark.createDataFrame(data, schema)
-
-        # df.write.format("delta").mode("append").save("/tmp/delta-tensor-coo")
         df.write.format("delta").mode("append").save("/tmp/delta-tensor-coo")
         return tensor_id
     
-        # raise Exception("Not implemented")
+        
 
     def __write_csr(self, sparse_tensor: SparseTensorCSR) -> str:
         tensor_id = str(uuid.uuid4())
@@ -340,11 +339,10 @@ class SparkUtil:
                 raise Exception(f"Layout {layout} not supported")
 
     def __read_coo(self, tensor_id: str) -> SparseTensorCOO:
-        # TODO @920fandanny
         df = self.spark.read.format("delta").load("/tmp/delta-tensor-coo")
         filtered_df = df.filter(df.id == tensor_id)
-        indices, values = filtered_df.select("indices", "value").first()
-        return SparseTensorCOO(indices, values)
+        indices, values, dense_shape = filtered_df.select("indices", "value", "dense_shape").first()  # Add "dense_shape"
+        return SparseTensorCOO(indices, values, dense_shape)
     
         # raise Exception("Not implemented")
 
