@@ -7,12 +7,14 @@ from pyspark.sql.types import *
 
 from tensor.sparse_tensor import *
 
+MAX_DIGITS = 4 
+CHUNK_SIZE = 50000 
 
 def get_spark_session() -> SparkSession:
     builder = pyspark.sql.SparkSession.builder.appName("DeltaTensor") \
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
-        .config("spark.driver.memory", "16g")
+        .config("spark.driver.memory", "4g")
 
     return configure_spark_with_delta_pip(builder).getOrCreate()
 
@@ -108,11 +110,79 @@ class SparkUtil:
         df.write.format("delta").mode("append").save("/tmp/delta-tensor-csc")
         return tensor_id
 
+    def split_array(self, arr, chunk_size):
+        """Yield successive chunk_size chunks from arr."""
+        for i in range(0, len(arr), chunk_size):
+            yield arr[i:i + chunk_size]
+
+
+
     def __write_csf(self, sparse_tensor: SparseTensorCSF) -> str:
         # TODO @kevinvan13
         # Please include layout as a column in the delta-table
         # df.write.format("delta").mode("append").save("/tmp/delta-tensor-csf")
-        raise Exception("Not implemented")
+        tensor_id = str(uuid.uuid4())
+
+
+        # Non-chunked data
+        fptr_zero = [int(x) for x in sparse_tensor.fptrs[0]]
+        fptr_one = [int(x) for x in sparse_tensor.fptrs[1]]
+        fid_zero = [int(x) for x in sparse_tensor.fids[0]]
+        fid_one = [int(x) for x in sparse_tensor.fids[1]]
+        dense_shape = list(sparse_tensor.dense_shape)
+        layout = sparse_tensor.layout.name
+
+
+        # Processing and chunking data with direct conversion to int
+        fptr_two_chunks = [[int(x) for x in chunk] for chunk in self.split_array(sparse_tensor.fptrs[2], CHUNK_SIZE)]
+        fid_two_chunks = [[int(x) for x in chunk] for chunk in self.split_array(sparse_tensor.fids[2], CHUNK_SIZE)]
+        fid_three_chunks = [[int(x) for x in chunk] for chunk in self.split_array(sparse_tensor.fids[3], CHUNK_SIZE)]
+        values_chunks = [[float(x) for x in chunk] for chunk in self.split_array(sparse_tensor.values.astype(float).tolist(), CHUNK_SIZE)]
+
+
+        
+        chunked_data = []
+        for i in range(max(len(fptr_two_chunks), len(fid_two_chunks), len(fid_three_chunks), len(values_chunks))):
+            # Format the chunk index with leading zeros
+            padded_index = str(i).zfill(MAX_DIGITS)  # Pads the index with leading zeros
+            chunk_id = f"{tensor_id}_{padded_index}"
+            chunk_data = {
+                "id": chunk_id,
+                "tensor_id": tensor_id,
+                "layout": layout,
+                "dense_shape": dense_shape,
+                **({"fptr_two_chunk": fptr_two_chunks[i]} if i < len(fptr_two_chunks) else {}),
+                **({"fid_two_chunk": fid_two_chunks[i]} if i < len(fid_two_chunks) else {}),
+                **({"fid_three_chunk": fid_three_chunks[i]} if i < len(fid_three_chunks) else {}),
+                **({"values_chunk": values_chunks[i]} if i < len(values_chunks) else {}),
+                # Including non-chunked data for reference, though could be optimized to store only once
+                "fptr_zero": fptr_zero if i == 0 else [],
+                "fptr_one": fptr_one if i == 0 else [],
+                "fid_zero": fid_zero if i == 0 else [],
+                "fid_one": fid_one if i == 0 else [],
+            }
+            chunked_data.append(chunk_data)
+            
+
+        # Define schema including both chunked and non-chunked data
+        schema = StructType([
+            StructField("id", StringType(), False),
+            StructField("tensor_id", StringType(), False),
+            StructField("layout", StringType(), False),
+            StructField("dense_shape", ArrayType(IntegerType()), False),
+            StructField("fptr_zero", ArrayType(IntegerType()), True),
+            StructField("fptr_one", ArrayType(IntegerType()), True),
+            StructField("fid_zero", ArrayType(IntegerType()), True),
+            StructField("fid_one", ArrayType(IntegerType()), True),
+            StructField("fptr_two_chunk", ArrayType(IntegerType()), True),
+            StructField("fid_two_chunk", ArrayType(IntegerType()), True),
+            StructField("fid_three_chunk", ArrayType(IntegerType()), True),
+            StructField("values_chunk", ArrayType(DoubleType()), True),
+        ])
+
+        df = self.spark.createDataFrame(chunked_data, schema)
+        df.write.format("delta").mode("append").save("/tmp/delta-tensor-csf")
+        return tensor_id
 
     def __write_mode_generic(self, sparse_tensor: SparseTensorModeGeneric) -> str:
         tensor_id = str(uuid.uuid4())
@@ -192,8 +262,51 @@ class SparkUtil:
         return SparseTensorCSC(values, row_indices, ccol_indices, dense_shape)
 
     def __read_csf(self, tensor_id: str) -> SparseTensorCSF:
-        # TODO @kevinvan13
-        raise Exception("Not implemented")
+        df = self.spark.read.format("delta").load("/tmp/delta-tensor-csf")
+        filtered_df = df.filter(df.tensor_id == tensor_id).sort("id")
+
+        # Initialize empty lists for chunked data
+        fptr_two = []
+        fid_two = []
+        fid_three = []
+        values = []
+
+        # Variables for non-chunked data, initially None
+        fptr_zero = fptr_one = fid_zero = fid_one = dense_shape = None
+
+        for row in filtered_df.collect():
+            # Safely extend lists if column exists and is not None
+            if row.asDict().get('fptr_two_chunk') is not None:
+                fptr_two.extend(row['fptr_two_chunk'])
+            if row.asDict().get('fid_two_chunk') is not None:
+                fid_two.extend(row['fid_two_chunk'])
+            if row.asDict().get('fid_three_chunk') is not None:
+                """
+                chunk_size = len(row['fid_three_chunk'])
+                print(f"Processing fid_three_chunk with size: {chunk_size}")
+                """
+                fid_three.extend(row['fid_three_chunk'])
+                
+            if row.asDict().get('values_chunk') is not None:
+                values.extend(row['values_chunk'])
+
+            # Only set non-chunked data if not already set
+            if fptr_zero is None:
+                fptr_zero = row['fptr_zero'] if 'fptr_zero' in row.asDict() else []
+                fptr_one = row['fptr_one'] if 'fptr_one' in row.asDict() else []
+                fid_zero = row['fid_zero'] if 'fid_zero' in row.asDict() else []
+                fid_one = row['fid_one'] if 'fid_one' in row.asDict() else []
+                dense_shape = row['dense_shape'] if 'dense_shape' in row.asDict() else []
+
+        # Ensure dense_shape is correctly formatted if it was ever set
+        dense_shape = tuple(dense_shape) if dense_shape is not None else ()
+
+        # Construct and return the SparseTensorCSF object
+        fptrs = [fptr_zero or [], fptr_one or [], fptr_two]
+        fids = [fid_zero or [], fid_one or [], fid_two, fid_three]
+        values = np.array(values) if values else np.array([])
+
+        return SparseTensorCSF(fptrs=fptrs, fids=fids, values=values, dense_shape=dense_shape)
 
     def __read_mode_generic(self, tensor_id: str) -> SparseTensorModeGeneric:
         df = self.spark.read.format("delta").load("/tmp/delta-tensor-mode-generic")
