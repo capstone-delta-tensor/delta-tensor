@@ -1,6 +1,6 @@
 import math
 import torch
-from collections import defaultdict
+from collections import Counter, deque, defaultdict
 
 from tensor.sparse_tensor import *
 
@@ -50,7 +50,36 @@ def coo_to_csc(tensor: SparseTensorCOO) -> SparseTensorCSC:
 
 def coo_to_csf(tensor: SparseTensorCOO) -> SparseTensorCSF:
     # TODO @kevinvan13
-    raise Exception("Not implemented")
+    dim = len(tensor.indices)
+
+    # Initialize CSF structure components
+    fptrs = [[0] for _ in range(dim-1)]
+    fids = [[] for _ in range(dim)]
+    vals = tensor.values.tolist()
+
+     # array, row_id, start, len
+    root = (tensor.indices[0], 0, 0, len(tensor.indices[0]))
+    queue = deque([root])
+    while queue:
+        size = len(queue)
+        while size > 0:
+            size -= 1
+            arr, row, start, length = queue.popleft()
+            
+            counter = Counter(arr[start:start+length])
+            if row > 0:
+                prev = fptrs[row-1][-1]
+                fptrs[row-1].append(len(counter)+prev)
+            for key, val in counter.items():
+                fids[row].append(key)
+                if row + 1 < len(tensor.indices):
+                    queue.append((tensor.indices[row+1], row + 1, start, val))
+                    start += val
+    
+
+    
+
+    return SparseTensorCSF(fptrs, fids, tensor.values, tensor.dense_shape)
 
 
 def coo_to_mode_generic(tensor: SparseTensorCOO, block_shape: tuple = ()) -> SparseTensorModeGeneric:
@@ -139,7 +168,17 @@ def csc_to_coo(sparse_tensor: SparseTensorCSC) -> SparseTensorCOO:
 
 def csf_to_coo(sparse_tensor: SparseTensorCSF) -> SparseTensorCOO:
     # TODO @kevinvan13
-    raise Exception("Not implemented")
+    expanded_indices = []
+    expanded_values = []
+    depth = len(sparse_tensor.fids)  # Assuming depth is consistent across fids
+
+    # Loop through all values to expand each row back to its original indices
+    for val_index in range(len(sparse_tensor.values)):
+        path, value = sparse_tensor.expand_row(val_index)
+        expanded_indices.append(path)
+        expanded_values.append(value)
+
+    return SparseTensorCOO(np.array(expanded_indices).transpose(), np.array(expanded_values), sparse_tensor.dense_shape)
 
 
 def mode_generic_to_coo(sparse_tensor: SparseTensorModeGeneric) -> SparseTensorCOO:
