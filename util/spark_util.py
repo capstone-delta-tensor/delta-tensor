@@ -1,4 +1,5 @@
 import uuid
+import io
 
 import pyspark
 from delta import configure_spark_with_delta_pip
@@ -20,8 +21,13 @@ def get_spark_session() -> SparkSession:
 
 
 class SparkUtil:
+    FTSF_LOCATION_FS = "/tmp/delta-tensor-flattened"
+
     def __init__(self):
         self.spark = get_spark_session()
+    
+    def clear_cache(self):
+        self.spark.catalog.clearCache()
 
     def write_tensor(self,
                      tensor: np.ndarray | SparseTensorCOO | SparseTensorCSR | SparseTensorCSC | SparseTensorCSF | SparseTensorModeGeneric,
@@ -30,9 +36,60 @@ class SparkUtil:
             return self.write_sparse_tensor(tensor)
         return self.write_dense_tensor(tensor)
 
-    def write_dense_tensor(self, tensor: np.ndarray) -> str:
-        # TODO @LiaoliaoLiu
-        raise Exception("Not implemented")
+    def write_dense_tensor(self, tensor: np.ndarray, chunk_dim_chunk: int = 3) -> str:
+        tensor_id = str(uuid.uuid4())
+        dim_count = tensor.ndim
+        dimensions = list(tensor.shape)
+        # TODO: strides
+        data = [{
+            "id": tensor_id,
+            "chunk": chunk,
+            "chunk_id": i,
+            "dim_count": dim_count,
+            "chunk_dim_count": chunk_dim_chunk,
+            "dimensions": dimensions,
+        } for i, chunk in enumerate(self.chunks_binaries(tensor, chunk_dim_chunk))]
+        schema = StructType([
+            StructField("id", StringType(), False),
+            StructField("chunk", BinaryType(), False),
+            StructField("chunk_id", IntegerType()),
+            StructField("dim_count", IntegerType()),
+            StructField("chunk_dim_count", IntegerType()),
+            StructField("dimensions", ArrayType(IntegerType())),
+        ])
+
+        df = self.spark.createDataFrame(data, schema)
+        df.write.format("delta").mode("append").save(SparkUtil.FTSF_LOCATION_FS)
+        return tensor_id
+
+    @classmethod
+    def flatten_to_chunks(cls, tensor: np.ndarray, chunk_dim_count: int) -> list[np.ndarray]:
+        if tensor.ndim <= chunk_dim_count:
+            return [tensor]
+        
+        chunk_dimensions = list(tensor.shape[-chunk_dim_count:])
+        flattened_tensor = tensor.reshape([-1] + chunk_dimensions)
+        chunks = [flattened_tensor[i] for i in range(flattened_tensor.shape[0])]
+        return chunks
+
+    @classmethod
+    def chunks_binaries(cls, tensor: np.ndarray, chunk_dim_count: int) -> bytes:
+        def get_array_bytes(array: np.ndarray):
+            buffer = io.BytesIO()
+            np.save(buffer, array)
+            return buffer.getvalue()
+
+        chunks = SparkUtil.flatten_to_chunks(tensor, chunk_dim_count)
+        chunk_binaries = [get_array_bytes(chunk) for chunk in chunks]
+        return chunk_binaries
+
+    def deserialize_from(chunk_rows: list[Row]) -> list[np.ndarray]:
+        chunks = []
+        for row in chunk_rows:
+            buffer = io.BytesIO(row['chunk'])
+            chunk = np.load(buffer)
+            chunks.append(chunk)
+        return chunks
 
     def write_sparse_tensor(self,
                             tensor: SparseTensorCOO | SparseTensorCSR | SparseTensorCSC | SparseTensorCSF | SparseTensorModeGeneric) -> str:
@@ -220,8 +277,12 @@ class SparkUtil:
         return self.read_dense_tensor(tensor_id)
 
     def read_dense_tensor(self, tensor_id: str) -> np.ndarray:
-        # TODO @LiaoliaoLiu
-        raise Exception("Not implemented")
+        df = self.spark.read.format("delta").load(SparkUtil.FTSF_LOCATION_FS)
+        tensor_df = df.filter(df.id == tensor_id).sort(df.chunk_id.asc())
+        chunks = SparkUtil.deserialize_from(tensor_df.select('chunk').collect())
+        tensor_shape = tensor_df.select("dimensions").first()['dimensions']
+        tensor = np.concatenate(chunks, axis=0).reshape(tensor_shape)
+        return tensor
 
     def read_sparse_tensor(self, tensor_id: str,
                            layout: SparseTensorLayout) -> SparseTensorCOO | SparseTensorCSR | SparseTensorCSC | SparseTensorCSF | SparseTensorModeGeneric:
