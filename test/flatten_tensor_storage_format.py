@@ -31,7 +31,7 @@ class TestTensor(unittest.TestCase):
     def check_write_read_equality(self, tensor: np.ndarray):
         t_id = self.delta_tensor.save_dense_tensor(tensor)
         restored_tensor = self.delta_tensor.get_dense_tensor_by_id(t_id)
-        self.assertEqual(True, np.array_equal(tensor,restored_tensor))
+        self.assertTrue(np.array_equal(tensor,restored_tensor))
 
     def test_4d(self):
         self.check_write_read_equality(self.tensor_4d)
