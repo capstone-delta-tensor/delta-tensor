@@ -2,7 +2,6 @@ import math
 import torch
 from collections import Counter, deque, defaultdict
 
-
 from tensor.sparse_tensor import *
 
 MAX_BLOCK_SIZE = 1024 * 32
