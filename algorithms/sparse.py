@@ -204,7 +204,7 @@ def mode_generic_to_coo(sparse_tensor: SparseTensorModeGeneric) -> SparseTensorC
 
     indices_coo = []
     values_coo = []
-    for i in range(indices.shape[1]):
+    for i in range(len(values)):
         global_base_indices = indices[:, i] * block_shape
         block = values[i]
         for j, val in enumerate(block):

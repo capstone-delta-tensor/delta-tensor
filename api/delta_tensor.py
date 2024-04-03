@@ -1,3 +1,4 @@
+import re
 import time
 
 from algorithms.sparse import *
@@ -26,19 +27,23 @@ class DeltaTensor:
         print(f"Time to write tensor {time.time() - start_time} seconds")
         return id
 
-    def get_dense_tensor_by_id(self, id: str) -> np.ndarray:
-        return self.spark_util.read_dense_tensor(id)
+    def get_dense_tensor_by_id(self, id: str, slice_tuple: tuple = ()) -> np.ndarray:
+        return self.spark_util.read_dense_tensor(id, slice_tuple)
 
     def get_sparse_tensor_as_dense_by_id(self, id: str) -> np.ndarray:
         # TODO support more types
         sparse_tensor = self.spark_util.read_sparse_tensor(id, layout=SparseTensorLayout.MODE_GENERIC)
         return mode_generic_to_ndarray(sparse_tensor)
 
-    def get_sparse_tensor_by_id(self, id: str, layout: SparseTensorLayout) -> SparseTensorCOO:
+    def get_sparse_tensor_by_id(self, id: str, layout: SparseTensorLayout, slice_expr: str = None) -> SparseTensorCOO:
         start_time = time.time()
-        sparse_tensor = self.spark_util.read_tensor(id, is_sparse=True, layout=layout)
+        sparse_tensor = self.spark_util.read_tensor(id, is_sparse=True, layout=layout, slice_tuple=self.__parse_slice_expr(slice_expr))
         print(f"Time to read tensor {time.time() - start_time} seconds")
         start_time = time.time()
         sparse_coo = sparse_to_coo(sparse_tensor)
         print(f"Time to decode tensor {time.time() - start_time} seconds")
         return sparse_coo
+
+    @staticmethod
+    def __parse_slice_expr(slice_expr: str) -> tuple:
+        return tuple(re.sub(r'[\[\] ]', '', slice_expr).split(',')) if slice_expr else ()
