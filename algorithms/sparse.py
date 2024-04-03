@@ -50,7 +50,6 @@ def coo_to_csc(tensor: SparseTensorCOO) -> SparseTensorCSC:
 
 
 def coo_to_csf(tensor: SparseTensorCOO) -> SparseTensorCSF:
-    # TODO @kevinvan13
     dim = len(tensor.indices)
 
     # Initialize CSF structure components
@@ -166,7 +165,6 @@ def csc_to_coo(sparse_tensor: SparseTensorCSC) -> SparseTensorCOO:
     return SparseTensorCOO(indices, values, sparse_tensor.dense_shape)
 
 def csf_to_coo(sparse_tensor: SparseTensorCSF) -> SparseTensorCOO:
-    # TODO @kevinvan13
     expanded_indices = []
     expanded_values = []
 

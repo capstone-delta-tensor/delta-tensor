@@ -59,7 +59,6 @@ class SparseTensorCSC:
 
 class SparseTensorCSF:
     def __init__(self, fptrs: np.ndarray, fids: np.ndarray, values: np.ndarray, dense_shape: tuple):
-        # TODO @kevinvan13 Add fields as needed
         self.fptrs = fptrs
         self.fids = fids
         self.values = values

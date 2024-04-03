@@ -175,10 +175,10 @@ class SparkUtil:
 
 
     def __write_csf(self, sparse_tensor: SparseTensorCSF) -> str:
-        # TODO @kevinvan13
-        # Please include layout as a column in the delta-table
-        # df.write.format("delta").mode("append").save("/tmp/delta-tensor-csf")
-        tensor_id = str(uuid.uuid4())
+        num_dimensions = len(sparse_tensor.fids)
+        prefix = "csf"
+        dimension_postfix = f"{num_dimensions:02d}"  # Ensure it's two digits
+        tensor_id = prefix + str(uuid.uuid4()) + dimension_postfix
 
 
         # Non-chunked data
@@ -189,40 +189,48 @@ class SparkUtil:
         dense_shape = list(sparse_tensor.dense_shape)
         layout = sparse_tensor.layout.name
 
-
-        # Processing and chunking data with direct conversion to int
-        fptr_two_chunks = [[int(x) for x in chunk] for chunk in self.split_array(sparse_tensor.fptrs[2], CHUNK_SIZE)]
-        fid_two_chunks = [[int(x) for x in chunk] for chunk in self.split_array(sparse_tensor.fids[2], CHUNK_SIZE)]
-        fid_three_chunks = [[int(x) for x in chunk] for chunk in self.split_array(sparse_tensor.fids[3], CHUNK_SIZE)]
+        # Initialize chunked data containers
+        chunked_data = []
         values_chunks = [[float(x) for x in chunk] for chunk in self.split_array(sparse_tensor.values.astype(float).tolist(), CHUNK_SIZE)]
 
 
+        # Dynamically handling dimensions
+        fptr_chunks = {}
+        fid_chunks = {}
+        for i in range(2, len(sparse_tensor.fptrs)):  # Start from the third dimension
+            fptr_chunks[f"fptr_{i}_chunk"] = [[int(x) for x in chunk] for chunk in self.split_array(sparse_tensor.fptrs[i], CHUNK_SIZE)]
+        for i in range(2, len(sparse_tensor.fids)):
+            fid_chunks[f"fid_{i}_chunk"] = [[int(x) for x in chunk] for chunk in self.split_array(sparse_tensor.fids[i], CHUNK_SIZE)]
+
+        max_chunks_length = max(len(values_chunks), max((len(chunks) for chunks in fptr_chunks.values()), default=0), max((len(chunks) for chunks in fid_chunks.values()), default=0))
+
         
-        chunked_data = []
-        for i in range(max(len(fptr_two_chunks), len(fid_two_chunks), len(fid_three_chunks), len(values_chunks))):
-            # Format the chunk index with leading zeros
-            padded_index = str(i).zfill(MAX_DIGITS)  # Pads the index with leading zeros
+        for i in range(max_chunks_length):
+            padded_index = str(i).zfill(MAX_DIGITS)
             chunk_id = f"{tensor_id}_{padded_index}"
-            chunk_data = {
+            chunk = {
                 "id": chunk_id,
                 "tensor_id": tensor_id,
                 "layout": layout,
                 "dense_shape": dense_shape,
-                **({"fptr_two_chunk": fptr_two_chunks[i]} if i < len(fptr_two_chunks) else {}),
-                **({"fid_two_chunk": fid_two_chunks[i]} if i < len(fid_two_chunks) else {}),
-                **({"fid_three_chunk": fid_three_chunks[i]} if i < len(fid_three_chunks) else {}),
-                **({"values_chunk": values_chunks[i]} if i < len(values_chunks) else {}),
-                # Including non-chunked data for reference, though could be optimized to store only once
+                "values_chunk": values_chunks[i] if i < len(values_chunks) else [],
                 "fptr_zero": fptr_zero if i == 0 else [],
                 "fptr_one": fptr_one if i == 0 else [],
                 "fid_zero": fid_zero if i == 0 else [],
                 "fid_one": fid_one if i == 0 else [],
             }
-            chunked_data.append(chunk_data)
+            for dim, chunks in fptr_chunks.items():
+                if i < len(chunks):
+                    chunk[dim] = chunks[i]
+            for dim, chunks in fid_chunks.items():
+                if i < len(chunks):
+                    chunk[dim] = chunks[i]
+
+            chunked_data.append(chunk)
             
 
         # Define schema including both chunked and non-chunked data
-        schema = StructType([
+        fields = [
             StructField("id", StringType(), False),
             StructField("tensor_id", StringType(), False),
             StructField("layout", StringType(), False),
@@ -231,14 +239,21 @@ class SparkUtil:
             StructField("fptr_one", ArrayType(IntegerType()), True),
             StructField("fid_zero", ArrayType(IntegerType()), True),
             StructField("fid_one", ArrayType(IntegerType()), True),
-            StructField("fptr_two_chunk", ArrayType(IntegerType()), True),
-            StructField("fid_two_chunk", ArrayType(IntegerType()), True),
-            StructField("fid_three_chunk", ArrayType(IntegerType()), True),
             StructField("values_chunk", ArrayType(DoubleType()), True),
-        ])
+        ]
 
+         # Dynamically adding fields for fptr and fid chunks
+        for dim in range(2, max(len(sparse_tensor.fptrs), len(sparse_tensor.fids))):
+            if dim < len(sparse_tensor.fptrs):
+                fields.append(StructField(f"fptr_{dim}_chunk", ArrayType(IntegerType()), True))
+            if dim < len(sparse_tensor.fids):
+                fields.append(StructField(f"fid_{dim}_chunk", ArrayType(IntegerType()), True))
+
+
+        schema = StructType(fields)
         df = self.spark.createDataFrame(chunked_data, schema)
-        df.write.format("delta").mode("append").save("/tmp/delta-tensor-csf")
+        path = f"/tmp/delta-tensor-csf/dim_{num_dimensions}/"
+        df.write.format("delta").mode("append").save(path)
         return tensor_id
 
     def __write_mode_generic(self, sparse_tensor: SparseTensorModeGeneric) -> str:
@@ -323,48 +338,46 @@ class SparkUtil:
         return SparseTensorCSC(values, row_indices, ccol_indices, dense_shape)
 
     def __read_csf(self, tensor_id: str) -> SparseTensorCSF:
-        df = self.spark.read.format("delta").load("/tmp/delta-tensor-csf")
+        # Extract the number of dimensions from the tensor ID
+        num_dimensions = int(tensor_id[-2:])  # The first two characters represent the dimensions
+        path = f"/tmp/delta-tensor-csf/dim_{num_dimensions}/"
+        df = self.spark.read.format("delta").load(path)
         filtered_df = df.filter(df.tensor_id == tensor_id).sort("id")
 
-        # Initialize empty lists for chunked data
-        fptr_two = []
-        fid_two = []
-        fid_three = []
+        # Initialize lists for non-chunked and chunked data
+        fptrs = [[] for _ in range(max(len(df.columns) // 2 - 3, 2))]  # Adjust based on column names
+        fids = [[] for _ in range(max(len(df.columns) // 2 - 2, 3))]  # Adjust based on column names
         values = []
 
         # Variables for non-chunked data, initially None
         fptr_zero = fptr_one = fid_zero = fid_one = dense_shape = None
 
         for row in filtered_df.collect():
-            # Safely extend lists if column exists and is not None
-            if row.asDict().get('fptr_two_chunk') is not None:
-                fptr_two.extend(row['fptr_two_chunk'])
-            if row.asDict().get('fid_two_chunk') is not None:
-                fid_two.extend(row['fid_two_chunk'])
-            if row.asDict().get('fid_three_chunk') is not None:
-                """
-                chunk_size = len(row['fid_three_chunk'])
-                print(f"Processing fid_three_chunk with size: {chunk_size}")
-                """
-                fid_three.extend(row['fid_three_chunk'])
-                
-            if row.asDict().get('values_chunk') is not None:
-                values.extend(row['values_chunk'])
+            row_dict = row.asDict()
+            if 'values_chunk' in row_dict and row_dict['values_chunk'] is not None:
+                values.extend(row_dict['values_chunk'])
+            
+            for i in range(len(fptrs)):
+                if f'fptr_{i}_chunk' in row_dict and row_dict[f'fptr_{i}_chunk'] is not None:
+                    fptrs[i].extend(row_dict[f'fptr_{i}_chunk'])
+            
+            for i in range(len(fids)):
+                if f'fid_{i}_chunk' in row_dict and row_dict[f'fid_{i}_chunk'] is not None:
+                    fids[i].extend(row_dict[f'fid_{i}_chunk'])
 
             # Only set non-chunked data if not already set
             if fptr_zero is None:
-                fptr_zero = row['fptr_zero'] if 'fptr_zero' in row.asDict() else []
-                fptr_one = row['fptr_one'] if 'fptr_one' in row.asDict() else []
-                fid_zero = row['fid_zero'] if 'fid_zero' in row.asDict() else []
-                fid_one = row['fid_one'] if 'fid_one' in row.asDict() else []
-                dense_shape = row['dense_shape'] if 'dense_shape' in row.asDict() else []
-
+                fptr_zero = row_dict.get('fptr_zero', [])
+                fptr_one = row_dict.get('fptr_one', [])
+                fid_zero = row_dict.get('fid_zero', [])
+                fid_one = row_dict.get('fid_one', [])
+                dense_shape = row_dict.get('dense_shape', [])
         # Ensure dense_shape is correctly formatted if it was ever set
         dense_shape = tuple(dense_shape) if dense_shape is not None else ()
 
-        # Construct and return the SparseTensorCSF object
-        fptrs = [fptr_zero or [], fptr_one or [], fptr_two]
-        fids = [fid_zero or [], fid_one or [], fid_two, fid_three]
+        # Adjust the first two dimensions manually as they are not part of the loop
+        fptrs[0], fptrs[1] = fptr_zero or [], fptr_one or []
+        fids[0], fids[1] = fid_zero or [], fid_one or []
         values = np.array(values) if values else np.array([])
 
         return SparseTensorCSF(fptrs=fptrs, fids=fids, values=values, dense_shape=dense_shape)
