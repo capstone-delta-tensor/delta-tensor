@@ -36,29 +36,33 @@ class SparkUtil:
             return self.write_sparse_tensor(tensor)
         return self.write_dense_tensor(tensor)
 
-    def write_dense_tensor(self, tensor: np.ndarray, chunk_dim_chunk: int = 3) -> str:
+    def write_dense_tensor(self, tensor: np.ndarray, chunk_dim_count: int = 3) -> str:
         tensor_id = str(uuid.uuid4())
         dim_count = tensor.ndim
         dimensions = list(tensor.shape)
+        chunk_dimensions = dimensions[-chunk_dim_count:]
         # TODO: strides
         data = [{
             "id": tensor_id,
-            "chunk": chunk,
+            "chunk": chunk.tolist(),
             "chunk_id": i,
             "dim_count": dim_count,
-            "chunk_dim_count": chunk_dim_chunk,
+            "chunk_dim_count": chunk_dim_count,
             "dimensions": dimensions,
-        } for i, chunk in enumerate(self.chunks_binaries(tensor, chunk_dim_chunk))]
+            "chunk_dimensions": chunk_dimensions,
+        } for i, chunk in enumerate(self.chunks_flattened(tensor, chunk_dim_count))]
         schema = StructType([
             StructField("id", StringType(), False),
-            StructField("chunk", BinaryType(), False),
+            StructField("chunk", ArrayType(IntegerType()), False),
             StructField("chunk_id", IntegerType()),
             StructField("dim_count", IntegerType()),
             StructField("chunk_dim_count", IntegerType()),
             StructField("dimensions", ArrayType(IntegerType())),
+            StructField("chunk_dimensions", ArrayType(IntegerType())),
         ])
 
         df = self.spark.createDataFrame(data, schema)
+        df.show()
         df.write.format("delta").mode("append").save(SparkUtil.FTSF_LOCATION_FS)
         return tensor_id
 
@@ -90,6 +94,25 @@ class SparkUtil:
         for row in chunk_rows:
             buffer = io.BytesIO(row['chunk'])
             chunk = np.load(buffer)
+            chunks.append(chunk)
+        return chunks
+    
+    @staticmethod
+    def chunks_flattened(tensor: np.ndarray, chunk_dim_count: int) -> list[np.ndarray]:
+        chunks = SparkUtil.flatten_to_chunks(tensor, chunk_dim_count)
+        chunks_flattenned = [chunk.flatten() for chunk in chunks]
+
+        with open('chunk', 'wb') as f:
+            f.write(SparkUtil.get_array_bytes(chunks_flattenned[0]))
+
+        return chunks_flattenned
+
+    @staticmethod
+    def chunks_flattened_restore(chunk_rows: list[Row], shape) -> list[np.ndarray]:
+        chunks = []
+        for row in chunk_rows:
+            flatten_chunk = np.array(row['chunk'], dtype=np.unit8)
+            chunk = np.reshape(flatten_chunk, shape)
             chunks.append(chunk)
         return chunks
 
@@ -281,7 +304,8 @@ class SparkUtil:
     def read_dense_tensor(self, tensor_id: str) -> np.ndarray:
         df = self.spark.read.format("delta").load(SparkUtil.FTSF_LOCATION_FS)
         tensor_df = df.filter(df.id == tensor_id).sort(df.chunk_id.asc())
-        chunks = SparkUtil.deserialize_from(tensor_df.select('chunk').collect())
+        chunk_shape = tensor_df.select("chunk_dimensions").first()['chunk_dimensions']
+        chunks = SparkUtil.chunks_flattened_restore(tensor_df.select('chunk').collect(), chunk_shape)
         tensor_shape = tensor_df.select("dimensions").first()['dimensions']
         tensor = np.concatenate(chunks, axis=0).reshape(tensor_shape)
         return tensor
