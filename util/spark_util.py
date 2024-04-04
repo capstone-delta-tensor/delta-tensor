@@ -15,7 +15,8 @@ def get_spark_session() -> SparkSession:
     builder = pyspark.sql.SparkSession.builder.appName("DeltaTensor") \
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
-        .config("spark.driver.memory", "4g")
+        .config("spark.driver.maxResultSize", "0") \
+        .config("spark.driver.memory", "16g")
 
     return configure_spark_with_delta_pip(builder).getOrCreate()
 
@@ -26,8 +27,8 @@ class SparkUtil:
     def __init__(self):
         self.spark = get_spark_session()
     
-    def clear_cache(self):
-        self.spark.catalog.clearCache()
+    def stop_session(self):
+        self.spark.stop()
 
     def write_tensor(self,
                      tensor: np.ndarray | SparseTensorCOO | SparseTensorCSR | SparseTensorCSC | SparseTensorCSF | SparseTensorModeGeneric,
