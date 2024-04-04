@@ -77,7 +77,7 @@ def benchmark_writing_uber_dataset(delta_tensor: DeltaTensor, sparse: SparseTens
     print("===============================================")
     print("Mode Generic benchmark for writing uber dataset")
     start = time.time()
-    t_id = delta_tensor.save_sparse_tensor(sparse, layout=SparseTensorLayout.MODE_GENERIC, block_shape=(4, 4))
+    t_id = delta_tensor.save_sparse_tensor(sparse, layout=SparseTensorLayout.MODE_GENERIC, block_shape=(8, 8))
     print(f"Tensor insertion time: {time.time() - start} seconds")
     return t_id
 
@@ -124,8 +124,8 @@ if __name__ == '__main__':
     # Test for torch pt file
     benchmark_uber_dataset_as_pt(uber_sparse)
 
-    # # Test for tensor writing
-    # t_id = benchmark_writing_uber_dataset(delta_tensor, uber_sparse)
-    #
-    # # Test for tensor reading
-    # benchmark_reading_uber_dataset(delta_tensor, t_id)
+    # Test for tensor writing
+    t_id = benchmark_writing_uber_dataset(delta_tensor, uber_sparse)
+
+    # Test for tensor reading
+    benchmark_reading_uber_dataset(delta_tensor, t_id)
