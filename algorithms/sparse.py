@@ -251,18 +251,3 @@ def __get_block_shapes(tensor_shape: tuple, is_sparse: bool = False) -> tuple:
 
 def __get_size_from_shape(shape: tuple) -> int:
     return np.array(shape).prod() if len(shape) != 0 else 1
-
-def flatten_coo_indices(indices: np.ndarray, shape: tuple) -> np.ndarray:
-    strides = np.cumprod([1] + list(shape[::-1]))[::-1][1:]
-    flat_row_indices = np.dot(indices[:-1].T, strides[:-1]).astype(np.int64)
-    flat_col_indices = indices[-1].astype(np.int64)
-    return np.vstack((flat_row_indices, flat_col_indices))
-
-def restore_coo_indices(flat_indices: np.ndarray, original_shape: tuple) -> np.ndarray:
-    n_dims = len(original_shape)
-    restored_indices = []
-    divisors = [np.prod(original_shape[dim+1:]) for dim in range(n_dims-1)] + [1]
-    for dim in range(n_dims):
-        dim_indices = (flat_indices // divisors[dim]) % original_shape[dim]
-        restored_indices.append(dim_indices)
-    return np.array(restored_indices, dtype=np.int64)
