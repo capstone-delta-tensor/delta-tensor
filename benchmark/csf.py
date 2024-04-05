@@ -50,7 +50,7 @@ if __name__ == '__main__':
 
 
     # Test for sparse tensor
-    #example_sparse_tensor(delta_tensor)
+    example_sparse_tensor(delta_tensor)
 
     # Test for uber set
     benchmark_uber_dataset(delta_tensor)
