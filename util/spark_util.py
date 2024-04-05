@@ -142,11 +142,13 @@ class SparkUtil:
         crow_indices = sparse_tensor.crow_indices.tolist()
         col_indices = sparse_tensor.col_indices.tolist()
         values = sparse_tensor.values.tolist()
+        original_shape = sparse_tensor.original_shape
         dense_shape = sparse_tensor.dense_shape
         layout = sparse_tensor.layout.name
         data = {
             "id": tensor_id,
             "layout": layout,
+            "original_shape": list(original_shape),
             "dense_shape": list(dense_shape),
             "crow_indices": crow_indices,
             "col_indices": col_indices,
@@ -155,12 +157,14 @@ class SparkUtil:
         schema = StructType([
             StructField("id", StringType(), False),
             StructField("layout", StringType(), False),
+            StructField("original_shape", ArrayType(IntegerType())),
             StructField("dense_shape", ArrayType(IntegerType())),
             StructField("crow_indices", ArrayType(IntegerType())),
             StructField("col_indices", ArrayType(IntegerType())),
             StructField("value", ArrayType(DoubleType())),
         ])
         df = self.spark.createDataFrame([data], schema)
+        print("df: ", df)
         df.write.format("delta").mode("append").save("/tmp/delta-tensor-csr")
         return tensor_id
     
@@ -356,11 +360,12 @@ class SparkUtil:
     def __read_csr(self, tensor_id: str) -> SparseTensorCSR:
         df = self.spark.read.format("delta").load("/tmp/delta-tensor-csr")
         filtered_df = df.filter(df.id == tensor_id)
+        original_shape = filtered_df.select("original_shape").first()[0]
         dense_shape = filtered_df.select("dense_shape").first()[0]
         crow_indices = np.array(filtered_df.select("crow_indices").rdd.map(lambda row: row[0]).collect())[0]
         col_indices = np.array(filtered_df.select("col_indices").rdd.map(lambda row: row[0]).collect())[0]
         values = np.array(filtered_df.select("value").rdd.map(lambda row: row[0]).collect())[0]
-        return SparseTensorCSR(values, col_indices, crow_indices, dense_shape)
+        return SparseTensorCSR(values, col_indices, crow_indices, original_shape, dense_shape)
 
     def __read_csc(self, tensor_id: str) -> SparseTensorCSC:
         df = self.spark.read.format("delta").load("/tmp/delta-tensor-csc")
