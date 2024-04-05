@@ -1,7 +1,7 @@
 from enum import Enum
 
 import numpy as np
-
+import torch
 
 class SparseTensorLayout(Enum):
     COO = 1
@@ -29,20 +29,27 @@ class SparseTensorCOO:
         return False  
 
 class SparseTensorCSR:
-    def __init__(self, values: np.ndarray, col_indices: np.ndarray, crow_indices: np.ndarray, dense_shape: tuple):
+    def __init__(self, values: np.ndarray, col_indices: np.ndarray, crow_indices: np.ndarray, original_shape: torch.Size, dense_shape: tuple):
+        assert values.ndim == 1, "Values should be a 1D array."
+        assert col_indices.ndim == 1, "Column indices should be a 1D array."
+        assert crow_indices.ndim == 1, "Row start indices should be a 1D array."
         self.values = values
         self.col_indices = col_indices
         self.crow_indices = crow_indices
+        self.original_shape = original_shape
         self.dense_shape = dense_shape
         self.layout = SparseTensorLayout.CSR
 
     def __str__(self):
         return (f"SparseTensor(\nvalues=\n{self.values},\ncol_indices=\n{self.col_indices},\n"
-                f"crow_indices=\n{self.crow_indices},\ndense_shape={self.dense_shape},\nlayout={self.layout})")
+                f"crow_indices=\n{self.crow_indices},\noriginal_shape={self.original_shape},\ndense_shape={self.dense_shape},\nlayout={self.layout})")
 
 
 class SparseTensorCSC:
     def __init__(self, values: np.ndarray, row_indices: np.ndarray, ccol_indices: np.ndarray, dense_shape: tuple):
+        assert values.ndim == 1, "Values should be a 1D array."
+        assert row_indices.ndim == 1, "Row indices should be a 1D array."
+        assert ccol_indices.ndim == 1, "Column start indices should be a 1D array."
         self.values = values
         self.row_indices = row_indices
         self.ccol_indices = ccol_indices
@@ -51,7 +58,7 @@ class SparseTensorCSC:
 
     def __str__(self):
         return (f"SparseTensor(\nvalues=\n{self.values},\nrow_indices=\n{self.row_indices},\n"
-                f"ccol_indices=\n{self.ccol_indices},\ndense_shape={self.dense_shape},\nlayout={self.layout})")
+                f"ccol_indices=\n{self.ccol_indices},\noriginal_shape={self.dense_shape},\ndense_shape={self.dense_shape},\nlayout={self.layout})")
 
 
 class SparseTensorCSF:
