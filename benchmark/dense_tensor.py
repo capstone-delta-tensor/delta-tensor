@@ -7,8 +7,10 @@ from util.data_util import read_ffhq_as_tensor
 NUMBER_OF_IMG = 10000
 DENSE_TENSOR_BINARY_LOCATION = '/tmp/dense_tensor_binary'
 
+
 def get_size(path: str) -> str:
-    return subprocess.check_output(['du','-sh', path]).split()[0].decode('utf-8')
+    return subprocess.check_output(['du', '-sh', path]).split()[0].decode('utf-8')
+
 
 def get_first_tensor_id() -> str:
     delta_tensor = DeltaTensor(SparkUtil())
@@ -16,6 +18,7 @@ def get_first_tensor_id() -> str:
     tensor_id = df.select("id").first()['id']
     delta_tensor.spark_util.stop_session()
     return tensor_id
+
 
 def benchmark_direct_serialization() -> None:
     print("=======================================")
@@ -29,6 +32,7 @@ def benchmark_direct_serialization() -> None:
 
     print(f"tensor storage size: {get_size(DENSE_TENSOR_BINARY_LOCATION)}")
 
+
 def benchmark_direct_deserialization() -> None:
     print("=======================================")
     print("Direct deserialization test for the ffhq dataset")
@@ -37,6 +41,7 @@ def benchmark_direct_deserialization() -> None:
     with open(DENSE_TENSOR_BINARY_LOCATION, 'rb') as f:
         deserialized_tensor = np.load(f)
     print(f"Bulk read time: {time.time() - start} seconds")
+
 
 def benchmark_ffhq_bulk_write() -> str:
     print("=======================================")
@@ -51,6 +56,7 @@ def benchmark_ffhq_bulk_write() -> str:
     print(f"tensor storage size: {get_size(SparkUtil.FTSF_LOCATION_FS)}")
     delta_tensor.spark_util.stop_session()
     return t_id
+
 
 def benchmark_ffhq_bulk_read(tensor_id: str) -> None:
     print("=======================================")

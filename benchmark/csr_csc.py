@@ -1,5 +1,4 @@
 from api.delta_tensor import *
-from util.spark_util import SparkUtil
 
 
 def example_sparse_tensor2d(delta_tensor: DeltaTensor) -> None:
@@ -14,12 +13,13 @@ def example_sparse_tensor2d(delta_tensor: DeltaTensor) -> None:
     tensor = delta_tensor.get_sparse_tensor_by_id(t_id, layout=SparseTensorLayout.CSR)
     print("restored tensor: ", tensor)
 
+
 def example_sparse_tensor4d(delta_tensor: DeltaTensor) -> None:
-    indices = np.array([[0, 0, 1, 1],  
-                        [0, 1, 0, 1],  
-                        [1, 1, 1, 1],  
-                        [0, 2, 2, 3]]) 
-    values = np.array([3, 4, 5, -1])   
+    indices = np.array([[0, 0, 1, 1],
+                        [0, 1, 0, 1],
+                        [1, 1, 1, 1],
+                        [0, 2, 2, 3]])
+    values = np.array([3, 4, 5, -1])
     dense_shape = (2, 2, 2, 4)
     sparse = SparseTensorCOO(indices, values, dense_shape)
     print("original tensor: ", sparse)
@@ -28,11 +28,12 @@ def example_sparse_tensor4d(delta_tensor: DeltaTensor) -> None:
     tensor = delta_tensor.get_sparse_tensor_by_id(t_id, layout=SparseTensorLayout.CSR)
     print("restored tensor: ", tensor)
 
+
 def benchmark_uber_dataset(delta_tensor: DeltaTensor) -> None:
     print("=======================================")
     print("Mode Generic benchmark for uber dataset")
     uber_sparse_tensor = np.loadtxt("dataset/uber/uber.tns", dtype=int).transpose()
-    indices = uber_sparse_tensor[0:-1]-1
+    indices = uber_sparse_tensor[0:-1] - 1
     values = uber_sparse_tensor[-1]
     dense_shape = (183, 24, 1140, 1717)
     sparse = SparseTensorCOO(indices, values, dense_shape)
@@ -42,6 +43,7 @@ def benchmark_uber_dataset(delta_tensor: DeltaTensor) -> None:
     start = time.time()
     delta_tensor.get_sparse_tensor_by_id(t_id, layout=SparseTensorLayout.CSR)
     print(f"Tensor retrieving time: {time.time() - start} seconds")
+
 
 if __name__ == '__main__':
     delta_tensor = DeltaTensor(SparkUtil())
