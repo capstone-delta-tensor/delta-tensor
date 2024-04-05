@@ -20,16 +20,13 @@ class SparseTensorCOO:
 
     def __str__(self):
         return f"SparseTensor(\nindices=\n{self.indices},\nvalues=\n{self.values},\ndense_shape={self.dense_shape},\nlayout={self.layout})"
-    
+
     def __eq__(self, other):
-        if not isinstance(other, SparseTensorCOO):
-            # don't attempt to compare against unrelated types
-            return NotImplemented
-        
-        # Compare all attributes for equality. Use numpy.array_equal for comparing numpy arrays.
-        return (np.array_equal(self.indices, other.indices) and
-                np.array_equal(self.values, other.values) and
-                self.dense_shape == other.dense_shape)
+        if isinstance(other, self.__class__):
+            return (np.array_equal(self.dense_shape, other.dense_shape) and
+                    np.array_equal(self.indices, other.indices) and
+                    np.array_equal(self.values, other.values))
+        return False  
 
 class SparseTensorCSR:
     def __init__(self, values: np.ndarray, col_indices: np.ndarray, crow_indices: np.ndarray, dense_shape: tuple):

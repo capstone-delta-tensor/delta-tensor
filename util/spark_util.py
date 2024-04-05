@@ -111,10 +111,31 @@ class SparkUtil:
                 raise Exception(f"Layout {tensor.layout} not supported")
 
     def __write_coo(self, sparse_tensor: SparseTensorCOO) -> str:
-        # TODO @920fandanny
-        # Please include layout as a column in the delta-table
-        # df.write.format("delta").mode("append").save("/tmp/delta-tensor-coo")
-        raise Exception("Not implemented")
+        tensor_id = str(uuid.uuid4())
+        indices = sparse_tensor.indices.tolist()  # Convert ndarray to list
+        # Convert ndarray to list
+        values = [float(value) for value in sparse_tensor.values.tolist()]
+        layout = sparse_tensor.layout.name
+        dense_shape = list(sparse_tensor.dense_shape)  # Convert tuple to list
+        data = [{
+            "id": tensor_id,
+            "layout": layout,
+            "dense_shape": dense_shape,
+            "indices": indices,
+            "value": values,
+        }]
+        schema = StructType([
+            StructField("id", StringType(), False),
+            StructField("layout", StringType(), False),
+            StructField("dense_shape", ArrayType(IntegerType())),
+            # Expect a list of lists for indices
+            StructField("indices", ArrayType(ArrayType(IntegerType()))),
+            # Expect a list of floats for values
+            StructField("value", ArrayType(DoubleType())),
+        ])
+        df = self.spark.createDataFrame(data, schema)
+        df.write.format("delta").mode("append").save("/tmp/delta-tensor-coo")
+        return tensor_id
 
     def __write_csr(self, sparse_tensor: SparseTensorCSR) -> str:
         tensor_id = str(uuid.uuid4())
@@ -285,7 +306,8 @@ class SparkUtil:
 
         df = self.spark.createDataFrame(data, schema)
         # df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").save("/tmp/delta-tensor-mode-generic")
-        df.write.format("delta").mode("append").save("/tmp/delta-tensor-mode-generic")
+        df.write.format("delta").mode("append").save(
+            "/tmp/delta-tensor-mode-generic")
         return tensor_id
 
     def read_tensor(self, tensor_id: str, is_sparse: bool = False,
@@ -319,8 +341,17 @@ class SparkUtil:
                 raise Exception(f"Layout {layout} not supported")
 
     def __read_coo(self, tensor_id: str) -> SparseTensorCOO:
-        # TODO @920fandanny
-        raise Exception("Not implemented")
+        df = self.spark.read.format("delta").load("/tmp/delta-tensor-coo")
+        filtered_df = df.filter(df.id == tensor_id)
+        indices, values, dense_shape = filtered_df.select(
+            "indices", "value", "dense_shape").first()
+
+        # Convert lists to numpy arrays
+        indices = np.array(indices)
+        values = np.array(values, dtype=float)
+        dense_shape = np.array(dense_shape)
+
+        return SparseTensorCOO(indices, values, dense_shape)
 
     def __read_csr(self, tensor_id: str) -> SparseTensorCSR:
         df = self.spark.read.format("delta").load("/tmp/delta-tensor-csr")
@@ -386,10 +417,14 @@ class SparkUtil:
         return SparseTensorCSF(fptrs=fptrs, fids=fids, values=values, dense_shape=dense_shape)
 
     def __read_mode_generic(self, tensor_id: str) -> SparseTensorModeGeneric:
-        df = self.spark.read.format("delta").load("/tmp/delta-tensor-mode-generic")
+        df = self.spark.read.format("delta").load(
+            "/tmp/delta-tensor-mode-generic")
         filtered_df = df.filter(df.id == tensor_id)
         # filtered_df.show()
-        dense_shape, block_shape = filtered_df.select("dense_shape", "block_shape").first()
-        indices = np.array(filtered_df.select("index_array").rdd.map(lambda row: row[0]).collect()).transpose()
-        values = np.array(filtered_df.select("value").rdd.map(lambda row: row[0]).collect())
+        dense_shape, block_shape = filtered_df.select(
+            "dense_shape", "block_shape").first()
+        indices = np.array(filtered_df.select("index_array").rdd.map(
+            lambda row: row[0]).collect()).transpose()
+        values = np.array(filtered_df.select(
+            "value").rdd.map(lambda row: row[0]).collect())
         return SparseTensorModeGeneric(indices, values, block_shape, dense_shape)
