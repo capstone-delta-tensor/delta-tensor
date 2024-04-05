@@ -1,9 +1,4 @@
-import torch
-
 from api.delta_tensor import *
-
-
-
 
 
 def example_sparse_tensor(delta_tensor: DeltaTensor) -> None:
@@ -47,7 +42,6 @@ def benchmark_uber_dataset(delta_tensor: DeltaTensor) -> None:
 
 if __name__ == '__main__':
     delta_tensor = DeltaTensor(SparkUtil())
-
 
     # Test for sparse tensor
     example_sparse_tensor(delta_tensor)

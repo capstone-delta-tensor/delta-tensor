@@ -27,8 +27,8 @@ class DeltaTensor:
         print(f"Time to write tensor {time.time() - start_time} seconds")
         return id
 
-    def get_dense_tensor_by_id(self, id: str, slice_tuple: tuple = ()) -> np.ndarray:
-        return self.spark_util.read_dense_tensor(id, slice_tuple)
+    def get_dense_tensor_by_id(self, id: str, slice_expr: str = None) -> np.ndarray:
+        return self.spark_util.read_dense_tensor(id, slice_tuple=self.__parse_slice_expr(slice_expr))
 
     def get_sparse_tensor_as_dense_by_id(self, id: str) -> np.ndarray:
         # TODO support more types
@@ -37,7 +37,8 @@ class DeltaTensor:
 
     def get_sparse_tensor_by_id(self, id: str, layout: SparseTensorLayout, slice_expr: str = None) -> SparseTensorCOO:
         start_time = time.time()
-        sparse_tensor = self.spark_util.read_tensor(id, is_sparse=True, layout=layout, slice_tuple=self.__parse_slice_expr(slice_expr))
+        sparse_tensor = self.spark_util.read_tensor(id, is_sparse=True, layout=layout,
+                                                    slice_tuple=self.__parse_slice_expr(slice_expr))
         print(f"Time to read tensor {time.time() - start_time} seconds")
         start_time = time.time()
         sparse_coo = sparse_to_coo(sparse_tensor)

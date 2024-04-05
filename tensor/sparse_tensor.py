@@ -3,6 +3,7 @@ from enum import Enum
 import numpy as np
 import torch
 
+
 class SparseTensorLayout(Enum):
     COO = 1
     CSR = 2
@@ -26,10 +27,12 @@ class SparseTensorCOO:
             return (np.array_equal(self.dense_shape, other.dense_shape) and
                     np.array_equal(self.indices, other.indices) and
                     np.array_equal(self.values, other.values))
-        return False  
+        return False
+
 
 class SparseTensorCSR:
-    def __init__(self, values: np.ndarray, col_indices: np.ndarray, crow_indices: np.ndarray, original_shape: torch.Size, dense_shape: tuple):
+    def __init__(self, values: np.ndarray, col_indices: np.ndarray, crow_indices: np.ndarray,
+                 original_shape: torch.Size, dense_shape: tuple):
         assert values.ndim == 1, "Values should be a 1D array."
         assert col_indices.ndim == 1, "Column indices should be a 1D array."
         assert crow_indices.ndim == 1, "Row start indices should be a 1D array."
@@ -95,7 +98,7 @@ class SparseTensorCSF:
     def __eq__(self, other):
         if not isinstance(other, SparseTensorCSF):
             return NotImplemented
-        
+
         return (np.array_equal(self.fptrs, other.fptrs) and
                 np.array_equal(self.fids, other.fids) and
                 np.array_equal(self.values, other.values) and
@@ -108,36 +111,35 @@ class SparseTensorCSF:
 
         # Store the original value index for returning the correct value
         original_val_index = val_index
-        
+
         # The value index in the bottom layer doesn't need conversion
         path[-1] = self.fids[-1][val_index]
-        
+
         # Trace back through the fptrs to reconstruct the full index path
         for level in reversed(range(1, depth)):  # Start from the bottom level and work up
             # Use binary search to find the block in fptrs that contains val_index for this level
-            left, right = 0, len(self.fptrs[level-1]) - 1
-            if val_index >= self.fptrs[level-1][-1]:
+            left, right = 0, len(self.fptrs[level - 1]) - 1
+            if val_index >= self.fptrs[level - 1][-1]:
                 while level >= 1:
-                    path[level-1] = self.fids[level-1][-1]
+                    path[level - 1] = self.fids[level - 1][-1]
                     level -= 1
                 break
             while left < right:
                 mid = left + (right - left) // 2
-                if self.fptrs[level-1][mid] <= val_index & val_index < self.fptrs[level-1][mid+1]:
-                    path[level-1] = self.fids[level-1][mid]
+                if self.fptrs[level - 1][mid] <= val_index & val_index < self.fptrs[level - 1][mid + 1]:
+                    path[level - 1] = self.fids[level - 1][mid]
                     val_index = mid
                     break
-                elif self.fptrs[level-1][mid+1] <= val_index:
+                elif self.fptrs[level - 1][mid + 1] <= val_index:
                     left = mid + 1
                 else:
                     right = mid
             if left == right:
-                path[level-1] = self.fids[level-1][left]
+                path[level - 1] = self.fids[level - 1][left]
                 val_index = left
-       
-
 
         return path, self.values[original_val_index]
+
 
 class SparseTensorModeGeneric:
     def __init__(self, indices: np.ndarray, values: np.ndarray, block_shape: tuple, dense_shape: tuple):
@@ -149,5 +151,3 @@ class SparseTensorModeGeneric:
 
     def __str__(self):
         return f"SparseTensor(\nindices=\n{self.indices},\nvalues=\n{self.values},\nblock_shape={self.block_shape},\ndense_shape={self.dense_shape},\nlayout={self.layout})"
-
-    

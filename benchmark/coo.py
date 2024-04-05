@@ -1,16 +1,11 @@
-import torch
-
 from api.delta_tensor import *
-import numpy as np
-import time
-from api.delta_tensor import SparseTensorCOO
 
 
 def benchmark_uber_dataset(delta_tensor: DeltaTensor) -> None:
     print("=======================================")
     print("COO for uber dataset")
     uber_sparse_tensor = np.loadtxt(
-        "/home/danny/delta-tensor/dataset/uber/uber.tns", dtype=int).transpose()
+        "dataset/uber/uber.tns", dtype=int).transpose()
     indices = uber_sparse_tensor[0:-1]
     values = uber_sparse_tensor[-1]
     dense_shape = (183, 24, 1140, 1717)

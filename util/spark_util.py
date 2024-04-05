@@ -27,7 +27,7 @@ class SparkUtil:
 
     def __init__(self):
         self.spark = get_spark_session()
-    
+
     def stop_session(self):
         self.spark.stop()
 
@@ -217,20 +217,22 @@ class SparkUtil:
 
         # Initialize chunked data containers
         chunked_data = []
-        values_chunks = [[float(x) for x in chunk] for chunk in self.split_array(sparse_tensor.values.astype(float).tolist(), CHUNK_SIZE)]
-
+        values_chunks = [[float(x) for x in chunk] for chunk in
+                         self.split_array(sparse_tensor.values.astype(float).tolist(), CHUNK_SIZE)]
 
         # Dynamically handling dimensions
         fptr_chunks = {}
         fid_chunks = {}
         for i in range(2, len(sparse_tensor.fptrs)):  # Start from the third dimension
-            fptr_chunks[f"fptr_{i}_chunk"] = [[int(x) for x in chunk] for chunk in self.split_array(sparse_tensor.fptrs[i], CHUNK_SIZE)]
+            fptr_chunks[f"fptr_{i}_chunk"] = [[int(x) for x in chunk] for chunk in
+                                              self.split_array(sparse_tensor.fptrs[i], CHUNK_SIZE)]
         for i in range(2, len(sparse_tensor.fids)):
-            fid_chunks[f"fid_{i}_chunk"] = [[int(x) for x in chunk] for chunk in self.split_array(sparse_tensor.fids[i], CHUNK_SIZE)]
+            fid_chunks[f"fid_{i}_chunk"] = [[int(x) for x in chunk] for chunk in
+                                            self.split_array(sparse_tensor.fids[i], CHUNK_SIZE)]
 
-        max_chunks_length = max(len(values_chunks), max((len(chunks) for chunks in fptr_chunks.values()), default=0), max((len(chunks) for chunks in fid_chunks.values()), default=0))
+        max_chunks_length = max(len(values_chunks), max((len(chunks) for chunks in fptr_chunks.values()), default=0),
+                                max((len(chunks) for chunks in fid_chunks.values()), default=0))
 
-        
         for i in range(max_chunks_length):
             padded_index = str(i).zfill(MAX_DIGITS)
             chunk_id = f"{tensor_id}_{padded_index}"
@@ -253,7 +255,6 @@ class SparkUtil:
                     chunk[dim] = chunks[i]
 
             chunked_data.append(chunk)
-            
 
         # Define schema including both chunked and non-chunked data
         fields = [
@@ -268,13 +269,12 @@ class SparkUtil:
             StructField("values_chunk", ArrayType(DoubleType()), True),
         ]
 
-         # Dynamically adding fields for fptr and fid chunks
+        # Dynamically adding fields for fptr and fid chunks
         for dim in range(2, max(len(sparse_tensor.fptrs), len(sparse_tensor.fids))):
             if dim < len(sparse_tensor.fptrs):
                 fields.append(StructField(f"fptr_{dim}_chunk", ArrayType(IntegerType()), True))
             if dim < len(sparse_tensor.fids):
                 fields.append(StructField(f"fid_{dim}_chunk", ArrayType(IntegerType()), True))
-
 
         schema = StructType(fields)
         df = self.spark.createDataFrame(chunked_data, schema)
@@ -345,7 +345,7 @@ class SparkUtil:
             case _:
                 raise Exception(f"Layout {layout} not supported")
 
-    def __read_coo(self, tensor_id: str) -> SparseTensorCOO:
+    def __read_coo(self, tensor_id: str, slice_tuple: tuple) -> SparseTensorCOO:
         # TODO @920fandanny support slicing operation
         df = self.spark.read.format("delta").load("/tmp/delta-tensor-coo")
         filtered_df = df.filter(df.id == tensor_id)
@@ -380,7 +380,7 @@ class SparkUtil:
         values = np.array(filtered_df.select("value").rdd.map(lambda row: row[0]).collect())[0]
         return SparseTensorCSC(values, row_indices, ccol_indices, dense_shape)
 
-    def __read_csf(self, tensor_id: str) -> SparseTensorCSF:
+    def __read_csf(self, tensor_id: str, slice_tuple: tuple) -> SparseTensorCSF:
         # TODO @kevinvan13 support slicing operation
         # Extract the number of dimensions from the tensor ID
         num_dimensions = int(tensor_id[-2:])  # The first two characters represent the dimensions
