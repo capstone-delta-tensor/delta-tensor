@@ -15,7 +15,8 @@ def get_spark_session() -> SparkSession:
     builder = pyspark.sql.SparkSession.builder.appName("DeltaTensor") \
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
-        .config("spark.driver.memory", "4g")
+        .config("spark.driver.maxResultSize", "0") \
+        .config("spark.driver.memory", "16g")
 
     return configure_spark_with_delta_pip(builder).getOrCreate()
 
@@ -26,8 +27,8 @@ class SparkUtil:
     def __init__(self):
         self.spark = get_spark_session()
     
-    def clear_cache(self):
-        self.spark.catalog.clearCache()
+    def stop_session(self):
+        self.spark.stop()
 
     def write_tensor(self,
                      tensor: np.ndarray | SparseTensorCOO | SparseTensorCSR | SparseTensorCSC | SparseTensorCSF | SparseTensorModeGeneric,
@@ -62,8 +63,8 @@ class SparkUtil:
         df.write.format("delta").mode("append").save(SparkUtil.FTSF_LOCATION_FS)
         return tensor_id
 
-    @classmethod
-    def flatten_to_chunks(cls, tensor: np.ndarray, chunk_dim_count: int) -> list[np.ndarray]:
+    @staticmethod
+    def flatten_to_chunks(tensor: np.ndarray, chunk_dim_count: int) -> list[np.ndarray]:
         if tensor.ndim <= chunk_dim_count:
             return [tensor]
         
@@ -72,17 +73,19 @@ class SparkUtil:
         chunks = [flattened_tensor[i] for i in range(flattened_tensor.shape[0])]
         return chunks
 
-    @classmethod
-    def chunks_binaries(cls, tensor: np.ndarray, chunk_dim_count: int) -> bytes:
-        def get_array_bytes(array: np.ndarray):
-            buffer = io.BytesIO()
-            np.save(buffer, array)
-            return buffer.getvalue()
+    @staticmethod
+    def get_array_bytes(array: np.ndarray):
+        buffer = io.BytesIO()
+        np.save(buffer, array)
+        return buffer.getvalue()
 
+    @staticmethod
+    def chunks_binaries(tensor: np.ndarray, chunk_dim_count: int) -> list[bytes]:
         chunks = SparkUtil.flatten_to_chunks(tensor, chunk_dim_count)
-        chunk_binaries = [get_array_bytes(chunk) for chunk in chunks]
+        chunk_binaries = [SparkUtil.get_array_bytes(chunk) for chunk in chunks]
         return chunk_binaries
 
+    @staticmethod
     def deserialize_from(chunk_rows: list[Row]) -> list[np.ndarray]:
         chunks = []
         for row in chunk_rows:
