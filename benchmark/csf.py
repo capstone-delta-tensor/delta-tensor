@@ -1,4 +1,5 @@
 from api.delta_tensor import *
+from util.data_util import get_uber_dataset
 
 
 def example_sparse_tensor(delta_tensor: DeltaTensor) -> None:
@@ -26,11 +27,7 @@ def example_sparse_tensor(delta_tensor: DeltaTensor) -> None:
 def benchmark_uber_dataset(delta_tensor: DeltaTensor) -> None:
     print("=======================================")
     print("CSF benchmark for uber dataset")
-    uber_sparse_tensor = np.loadtxt("dataset/uber/uber.tns", dtype=int).transpose()
-    indices = uber_sparse_tensor[0:-1]
-    values = uber_sparse_tensor[-1]
-    dense_shape = (183, 24, 1140, 1717)
-    sparse = SparseTensorCOO(indices, values, dense_shape)
+    sparse = get_uber_dataset()
     start = time.time()
     t_id = delta_tensor.save_sparse_tensor(sparse, layout=SparseTensorLayout.CSF)
     print(f"Tensor insertion time: {time.time() - start} seconds")
