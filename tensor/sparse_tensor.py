@@ -3,7 +3,6 @@ from enum import Enum
 import numpy as np
 import torch
 
-
 class SparseTensorLayout(Enum):
     COO = 1
     CSR = 2
@@ -31,8 +30,7 @@ class SparseTensorCOO:
 
 
 class SparseTensorCSR:
-    def __init__(self, values: np.ndarray, col_indices: np.ndarray, crow_indices: np.ndarray,
-                 original_shape: torch.Size, dense_shape: tuple):
+    def __init__(self, values: np.ndarray, col_indices: np.ndarray, crow_indices: np.ndarray, original_shape: torch.Size, dense_shape: tuple):
         assert values.ndim == 1, "Values should be a 1D array."
         assert col_indices.ndim == 1, "Column indices should be a 1D array."
         assert crow_indices.ndim == 1, "Row start indices should be a 1D array."

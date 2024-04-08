@@ -5,7 +5,6 @@ from tensor.sparse_tensor import *
 
 MAX_BLOCK_SIZE = 1024 * 32
 
-
 def ndarray_to_mode_generic(tensor: np.ndarray) -> SparseTensorModeGeneric:
     indices_shape, block_shape = __get_block_shapes(tensor.shape)
     indices_size = __get_size_from_shape(indices_shape)
@@ -41,9 +40,8 @@ def coo_to_csr(tensor: SparseTensorCOO) -> SparseTensorCSR:
     for dim, size in enumerate(original_shape):
         if np.any(tensor.indices[dim, :] < 0) or np.any(tensor.indices[dim, :] >= size):
             print(f"Out of bounds indices found in dimension {dim}:")
-            print("Indices should be within:", (0, size - 1))
-            out_of_bounds_indices = tensor.indices[
-                dim, np.logical_or(tensor.indices[dim, :] < 0, tensor.indices[dim, :] >= size)]
+            print("Indices should be within:", (0, size-1))
+            out_of_bounds_indices = tensor.indices[dim, np.logical_or(tensor.indices[dim, :] < 0, tensor.indices[dim, :] >= size)]
             print("Out of bounds indices:", np.unique(out_of_bounds_indices))
     if len(original_shape) == 2:
         coo = torch.sparse_coo_tensor(tensor.indices, tensor.values, tensor.dense_shape, dtype=torch.float32)
@@ -55,9 +53,7 @@ def coo_to_csr(tensor: SparseTensorCOO) -> SparseTensorCSR:
         flattened_2D_indices = np.vstack((flat_row_indices, flat_col_indices))
         coo = torch.sparse_coo_tensor(flattened_2D_indices, tensor.values, new_dense_shape, dtype=torch.float32)
     csr = coo.to_sparse_csr()
-    return SparseTensorCSR(csr.values().numpy(), csr.col_indices().numpy(), csr.crow_indices().numpy(), original_shape,
-                           csr.shape)
-
+    return SparseTensorCSR(csr.values().numpy(), csr.col_indices().numpy(), csr.crow_indices().numpy(), original_shape, csr.shape)
 
 def coo_to_csc(tensor: SparseTensorCOO) -> SparseTensorCSC:
     coo = torch.sparse_coo_tensor(tensor.indices, tensor.values, tensor.dense_shape, dtype=torch.float32)
@@ -257,3 +253,18 @@ def __get_block_shapes(tensor_shape: tuple, is_sparse: bool = False) -> tuple:
 
 def __get_size_from_shape(shape: tuple) -> int:
     return np.array(shape).prod() if len(shape) != 0 else 1
+
+def flatten_coo_indices(indices: np.ndarray, shape: tuple) -> np.ndarray:
+    strides = np.cumprod([1] + list(shape[::-1]))[::-1][1:]
+    flat_row_indices = np.dot(indices[:-1].T, strides[:-1]).astype(np.int64)
+    flat_col_indices = indices[-1].astype(np.int64)
+    return np.vstack((flat_row_indices, flat_col_indices))
+
+def restore_coo_indices(flat_indices: np.ndarray, original_shape: tuple) -> np.ndarray:
+    n_dims = len(original_shape)
+    restored_indices = []
+    divisors = [np.prod(original_shape[dim+1:]) for dim in range(n_dims-1)] + [1]
+    for dim in range(n_dims):
+        dim_indices = (flat_indices // divisors[dim]) % original_shape[dim]
+        restored_indices.append(dim_indices)
+    return np.array(restored_indices, dtype=np.int64)
