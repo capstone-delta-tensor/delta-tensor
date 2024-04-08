@@ -1,4 +1,7 @@
+import os
+
 from api.delta_tensor import *
+from util.data_util import get_uber_dataset
 
 
 def example_dense_tensor(delta_tensor: DeltaTensor) -> None:
@@ -115,11 +118,7 @@ if __name__ == '__main__':
     example_sparse_tensor_slicing(delta_tensor)
 
     # Load uber dataset
-    uber_sparse_tensor = np.loadtxt("dataset/uber/uber.tns", dtype=int).transpose()
-    indices = uber_sparse_tensor[0:-1] - 1
-    values = uber_sparse_tensor[-1]
-    dense_shape = (183, 24, 1140, 1717)
-    uber_sparse = SparseTensorCOO(indices, values, dense_shape)
+    uber_sparse = get_uber_dataset()
 
     # Test for torch pt file
     benchmark_uber_dataset_as_pt(uber_sparse)
