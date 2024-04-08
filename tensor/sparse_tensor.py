@@ -32,7 +32,7 @@ class SparseTensorCOO:
 
 class SparseTensorCSR:
     def __init__(self, values: np.ndarray, col_indices: np.ndarray, crow_indices: np.ndarray,
-                 original_shape: torch.Size, dense_shape: tuple):
+                original_shape: torch.Size, dense_shape: tuple):
         assert values.ndim == 1, "Values should be a 1D array."
         assert col_indices.ndim == 1, "Column indices should be a 1D array."
         assert crow_indices.ndim == 1, "Row start indices should be a 1D array."
@@ -49,19 +49,21 @@ class SparseTensorCSR:
 
 
 class SparseTensorCSC:
-    def __init__(self, values: np.ndarray, row_indices: np.ndarray, ccol_indices: np.ndarray, dense_shape: tuple):
+    def __init__(self, values: np.ndarray, row_indices: np.ndarray, ccol_indices: np.ndarray,
+                original_shape: torch.Size, dense_shape: tuple):
         assert values.ndim == 1, "Values should be a 1D array."
         assert row_indices.ndim == 1, "Row indices should be a 1D array."
         assert ccol_indices.ndim == 1, "Column start indices should be a 1D array."
         self.values = values
         self.row_indices = row_indices
         self.ccol_indices = ccol_indices
+        self.original_shape = original_shape
         self.dense_shape = dense_shape
         self.layout = SparseTensorLayout.CSC
 
     def __str__(self):
         return (f"SparseTensor(\nvalues=\n{self.values},\nrow_indices=\n{self.row_indices},\n"
-                f"ccol_indices=\n{self.ccol_indices},\noriginal_shape={self.dense_shape},\ndense_shape={self.dense_shape},\nlayout={self.layout})")
+                f"ccol_indices=\n{self.ccol_indices},\noriginal_shape={self.original_shape},\ndense_shape={self.dense_shape},\nlayout={self.layout})")
 
 
 class SparseTensorCSF:
