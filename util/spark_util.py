@@ -295,13 +295,19 @@ class SparkUtil:
         block_shape = sparse_tensor.block_shape
         dense_shape = sparse_tensor.dense_shape
         layout = sparse_tensor.layout
+
+        values_coo = [list] * len(values)
+        for i in range(len(values)):
+            block = torch.tensor(values[i])
+            block_coo = block.to_sparse_coo()
+            values_coo[i] = np.vstack((block_coo.indices(), block_coo.values().reshape(1, -1))).tolist()
         data = [{
             "id": tensor_id,
             "layout": layout.name,
             "dense_shape": dense_shape,
             "block_shape": block_shape,
             "index_array": indices[:, i].tolist(),
-            "value": values[i].tolist(),
+            "value": values_coo[i],
         } for i in range(len(values))]
         schema = StructType([
             StructField("id", StringType(), False),
@@ -309,7 +315,7 @@ class SparkUtil:
             StructField("dense_shape", ArrayType(IntegerType())),
             StructField("block_shape", ArrayType(IntegerType())),
             StructField("index_array", ArrayType(IntegerType())),
-            StructField("value", ArrayType(DoubleType())),
+            StructField("value", ArrayType(ArrayType(DoubleType()))),
         ])
 
         df = self.spark.createDataFrame(data, schema)
@@ -438,8 +444,7 @@ class SparkUtil:
         dense_shape, block_shape = filtered_df.select("dense_shape", "block_shape").first()
         if len(slice_tuple) == 0:
             indices = np.array(filtered_df.select("index_array").rdd.map(lambda row: row[0]).collect()).transpose()
-            values = np.array(filtered_df.select("value").rdd.map(lambda row: row[0]).collect())
-            return SparseTensorModeGeneric(indices, values, block_shape, dense_shape)
+            values_coo = filtered_df.select("value").rdd.map(lambda row: row[0]).collect()
         else:
             slice_tuple = self.__parse_slice_tuple(slice_tuple, dense_shape)
 
@@ -454,9 +459,16 @@ class SparkUtil:
             indices = np.array(
                 filtered_df.select("index_array").rdd.filter(filter_predicate).map(
                     lambda row: row[0]).collect()).transpose()
-            values = np.array(filtered_df.select("index_array", "value").rdd.filter(filter_predicate).map(
-                lambda row: row[1]).collect())
-            return SparseTensorModeGeneric(indices, values, block_shape, dense_shape)
+            values_coo = filtered_df.select("index_array", "value").rdd.filter(filter_predicate).map(
+                lambda row: row[1]).collect()
+
+        values = np.zeros((len(values_coo), *block_shape))
+        for i in range(len(values_coo)):
+            block_coo = torch.sparse_coo_tensor(indices=torch.tensor(values_coo[i][:-1]),
+                                                values=torch.tensor(values_coo[i][-1]), size=block_shape)
+            values[i] = block_coo.to_dense()
+
+        return SparseTensorModeGeneric(indices, values, block_shape, dense_shape)
 
     @staticmethod
     def __parse_slice_tuple(slice_tuple: tuple, dense_shape: tuple) -> tuple:

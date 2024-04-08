@@ -116,13 +116,12 @@ def coo_to_mode_generic(tensor: SparseTensorCOO, block_shape: tuple = ()) -> Spa
         blocks_dict[key][tuple(value_indices)] = tensor.values[i]
 
     indices = np.zeros((len(indices_dict), len(block_shape)), dtype=int)
-    values = np.zeros((len(indices_dict), __get_size_from_shape(block_shape)))
+    values = np.zeros((len(indices_dict), *block_shape))
     for i, key in enumerate(indices_dict):
         indices[i] = indices_dict[key]
-        values[i] = blocks_dict[key].reshape(-1)
+        values[i] = blocks_dict[key]
 
-    return SparseTensorModeGeneric(indices.transpose(), values, block_shape,
-                                   tensor.dense_shape)
+    return SparseTensorModeGeneric(indices.transpose(), values, block_shape, tensor.dense_shape)
 
 
 def mode_generic_to_ndarray(sparse_tensor: SparseTensorModeGeneric) -> np.ndarray:
@@ -208,15 +207,15 @@ def mode_generic_to_coo(sparse_tensor: SparseTensorModeGeneric) -> SparseTensorC
     block_shape = sparse_tensor.block_shape
     dense_shape = sparse_tensor.dense_shape
 
-    indices_coo = []
-    values_coo = []
+    indices_coo = np.zeros((len(dense_shape), 0))
+    values_coo = np.zeros(0)
     for i in range(len(values)):
-        global_base_indices = indices[:, i] * block_shape
-        block = values[i]
-        for j, val in enumerate(block):
-            if val == 0: continue
-            indices_coo.append(global_base_indices + np.unravel_index(j, block_shape))
-            values_coo.append(val)
+        global_base_indices = (indices[:, i] * block_shape).reshape(-1, 1)
+        block = torch.tensor(values[i])
+        block_coo = block.to_sparse_coo()
+
+        indices_coo = np.hstack((indices_coo, np.array(block_coo.indices()) + global_base_indices.reshape(-1, 1)))
+        values_coo = np.append(values_coo, block_coo.values())
 
     return SparseTensorCOO(np.array(indices_coo).transpose(), np.array(values_coo), dense_shape)
 
