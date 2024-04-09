@@ -23,7 +23,13 @@ def get_spark_session() -> SparkSession:
 
 
 class SparkUtil:
-    FTSF_LOCATION_FS = "/tmp/delta-tensor-flattened"
+    BUCKET = "/tmp/delta-tensor"
+    FTSF_LOCATION_FS = '/'.join((BUCKET, "flattened"))
+    COO_LOCATION_FS = '/'.join((BUCKET, "coo"))
+    CSR_LOCATION_FS = '/'.join((BUCKET, "csr"))
+    CSC_LOCATION_FS = '/'.join((BUCKET, "csc"))
+    CSF_LOCATION_FS = '/'.join((BUCKET, "csf"))
+    MODE_GENERIC_LOCATION_FS = '/'.join((BUCKET, "mode-generic"))
 
     def __init__(self):
         self.spark = get_spark_session()
@@ -135,7 +141,7 @@ class SparkUtil:
             StructField("value", ArrayType(DoubleType())),
         ])
         df = self.spark.createDataFrame(data, schema)
-        df.write.format("delta").mode("append").save("/tmp/delta-tensor-coo")
+        df.write.format("delta").mode("append").save(SparkUtil.COO_LOCATION_FS)
         return tensor_id
 
     def __write_csr(self, sparse_tensor: SparseTensorCSR) -> str:
@@ -166,7 +172,7 @@ class SparkUtil:
         ])
         df = self.spark.createDataFrame([data], schema)
         print("df: ", df)
-        df.write.format("delta").mode("append").save("/tmp/delta-tensor-csr")
+        df.write.format("delta").mode("append").save(SparkUtil.CSR_LOCATION_FS)
         return tensor_id
 
     def __write_csc(self, sparse_tensor: SparseTensorCSC) -> str:
@@ -193,7 +199,7 @@ class SparkUtil:
             StructField("value", ArrayType(DoubleType())),
         ])
         df = self.spark.createDataFrame([data], schema)
-        df.write.format("delta").mode("append").save("/tmp/delta-tensor-csc")
+        df.write.format("delta").mode("append").save(SparkUtil.CSC_LOCATION_FS)
         return tensor_id
 
     def split_array(self, arr, chunk_size):
@@ -278,7 +284,7 @@ class SparkUtil:
 
         schema = StructType(fields)
         df = self.spark.createDataFrame(chunked_data, schema)
-        path = f"/tmp/delta-tensor-csf/dim_{num_dimensions}/"
+        path = f"{SparkUtil.CSF_LOCATION_FS}/dim_{num_dimensions}/"
         df.write.format("delta").mode("append").save(path)
         return tensor_id
 
@@ -308,8 +314,7 @@ class SparkUtil:
 
         df = self.spark.createDataFrame(data, schema)
         # df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").save("/tmp/delta-tensor-mode-generic")
-        df.write.format("delta").mode("append").save(
-            "/tmp/delta-tensor-mode-generic")
+        df.write.format("delta").mode("append").save(SparkUtil.MODE_GENERIC_LOCATION_FS)
         return tensor_id
 
     def read_tensor(self, tensor_id: str, is_sparse: bool = False,
@@ -347,7 +352,7 @@ class SparkUtil:
 
     def __read_coo(self, tensor_id: str, slice_tuple: tuple) -> SparseTensorCOO:
         # TODO @920fandanny support slicing operation
-        df = self.spark.read.format("delta").load("/tmp/delta-tensor-coo")
+        df = self.spark.read.format("delta").load(SparkUtil.COO_LOCATION_FS)
         filtered_df = df.filter(df.id == tensor_id)
         indices, values, dense_shape = filtered_df.select(
             "indices", "value", "dense_shape").first()
@@ -361,7 +366,7 @@ class SparkUtil:
 
     def __read_csr(self, tensor_id: str, slice_tuple: tuple) -> SparseTensorCSR:
         # TODO @evanyfzhou support slicing operation
-        df = self.spark.read.format("delta").load("/tmp/delta-tensor-csr")
+        df = self.spark.read.format("delta").load(SparkUtil.CSR_LOCATION_FS)
         filtered_df = df.filter(df.id == tensor_id)
         original_shape = filtered_df.select("original_shape").first()[0]
         dense_shape = filtered_df.select("dense_shape").first()[0]
@@ -372,7 +377,7 @@ class SparkUtil:
 
     def __read_csc(self, tensor_id: str, slice_tuple: tuple) -> SparseTensorCSC:
         # TODO @evanyfzhou support slicing operation
-        df = self.spark.read.format("delta").load("/tmp/delta-tensor-csc")
+        df = self.spark.read.format("delta").load(SparkUtil.CSC_LOCATION_FS)
         filtered_df = df.filter(df.id == tensor_id)
         dense_shape = filtered_df.select("dense_shape").first()[0]
         ccol_indices = np.array(filtered_df.select("ccol_indices").rdd.map(lambda row: row[0]).collect())[0]
@@ -384,7 +389,7 @@ class SparkUtil:
         # TODO @kevinvan13 support slicing operation
         # Extract the number of dimensions from the tensor ID
         num_dimensions = int(tensor_id[-2:])  # The first two characters represent the dimensions
-        path = f"/tmp/delta-tensor-csf/dim_{num_dimensions}/"
+        path = f"{SparkUtil.CSF_LOCATION_FS}/dim_{num_dimensions}/"
         df = self.spark.read.format("delta").load(path)
         filtered_df = df.filter(df.tensor_id == tensor_id).sort("id")
 
@@ -427,7 +432,7 @@ class SparkUtil:
         return SparseTensorCSF(fptrs=fptrs, fids=fids, values=values, dense_shape=dense_shape)
 
     def __read_mode_generic(self, tensor_id: str, slice_tuple: tuple) -> SparseTensorModeGeneric:
-        df = self.spark.read.format("delta").load("/tmp/delta-tensor-mode-generic")
+        df = self.spark.read.format("delta").load(SparkUtil.MODE_GENERIC_LOCATION_FS)
         filtered_df = df.filter(df.id == tensor_id)
         # filtered_df.show()
         dense_shape, block_shape = filtered_df.select("dense_shape", "block_shape").first()
