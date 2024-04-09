@@ -10,6 +10,8 @@ config = {
     "spark.driver.maxResultSize": os.environ.get("spark.driver.maxResultSize"),
     "spark.driver.memory": os.environ.get("spark.driver.memory"),
     "spark.executor.memory": os.environ.get("spark.executor.memory"),
+    "spark.default.parallelism": os.environ.get("spark.default.parallelism"),
+    "spark.sql.debug.maxToStringFields": os.environ.get("spark.sql.debug.maxToStringFields"),
     "extra_packages": json.loads(os.environ.get("extra_packages")),
     "s3.bucket.name": os.environ.get("s3.bucket.name"),
     "spark.hadoop.fs.s3a.aws.credentials.provider": os.environ.get("spark.hadoop.fs.s3a.aws.credentials.provider"),
