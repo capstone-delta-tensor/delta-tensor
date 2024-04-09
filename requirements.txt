@@ -26,6 +26,7 @@ py4j==0.10.9.7
 pyarrow==15.0.0
 pyarrow-hotfix==0.6
 pyspark==3.5.0
+python-dotenv==1.0.1
 sympy==1.12
 torch==2.2.1
 torchvision==0.17.1

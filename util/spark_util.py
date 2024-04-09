@@ -1,11 +1,12 @@
-import uuid
 import io
+import uuid
 
 import pyspark
 from delta import configure_spark_with_delta_pip
 from pyspark.sql import SparkSession
 from pyspark.sql.types import *
 
+from settings import config
 from tensor.sparse_tensor import *
 
 MAX_DIGITS = 4
@@ -16,14 +17,19 @@ def get_spark_session() -> SparkSession:
     builder = pyspark.sql.SparkSession.builder.appName("DeltaTensor") \
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
-        .config("spark.driver.maxResultSize", "0") \
-        .config("spark.driver.memory", "16g")
-
-    return configure_spark_with_delta_pip(builder).getOrCreate()
+        .config("spark.driver.maxResultSize", config["spark.driver.maxResultSize"]) \
+        .config("spark.driver.memory", config["spark.driver.memory"]) \
+        .config("spark.executor.memory", config["spark.executor.memory"]) \
+        .config("spark.hadoop.fs.s3a.aws.credentials.provider", config["spark.hadoop.fs.s3a.aws.credentials.provider"]) \
+        .config("spark.hadoop.fs.s3a.access.key", config["spark.hadoop.fs.s3a.access.key"]) \
+        .config("spark.hadoop.fs.s3a.secret.key", config["spark.hadoop.fs.s3a.secret.key"]) \
+        .config("spark.hadoop.fs.s3a.session.token", config["spark.hadoop.fs.s3a.session.token"])
+    extra_packages = config["extra_packages"]
+    return configure_spark_with_delta_pip(builder, extra_packages=extra_packages).getOrCreate()
 
 
 class SparkUtil:
-    BUCKET = "/tmp/delta-tensor"
+    BUCKET = config["s3.bucket.name"] if config["s3.bucket.name"] else "/tmp/delta-tensor"
     FTSF_TABLE = '/'.join((BUCKET, "flattened"))
     COO_TABLE = '/'.join((BUCKET, "coo"))
     CSR_TABLE = '/'.join((BUCKET, "csr"))
