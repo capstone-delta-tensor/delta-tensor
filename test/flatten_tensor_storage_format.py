@@ -16,7 +16,7 @@ class TestTensor(unittest.TestCase):
     
     def tearDown(self):
         self.delta_tensor.spark_util.clear_cache();
-        shutil.rmtree(SparkUtil.FTSF_LOCATION_FS, ignore_errors=True)
+        shutil.rmtree(SparkUtil.FTSF_TABLE, ignore_errors=True)
 
     def test_chunking(self):
         chunks_of_4dt4d = SparkUtil.flatten_to_chunks(self.tensor_4d, 4)

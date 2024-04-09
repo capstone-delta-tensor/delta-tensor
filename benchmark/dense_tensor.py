@@ -14,7 +14,7 @@ def get_size(path: str) -> str:
 
 def get_first_tensor_id() -> str:
     delta_tensor = DeltaTensor(SparkUtil())
-    df = delta_tensor.spark_util.spark.read.format("delta").load(SparkUtil.FTSF_LOCATION_FS)
+    df = delta_tensor.spark_util.spark.read.format("delta").load(SparkUtil.FTSF_TABLE)
     tensor_id = df.select("id").first()['id']
     delta_tensor.spark_util.stop_session()
     return tensor_id
@@ -53,7 +53,7 @@ def benchmark_ffhq_bulk_write() -> str:
     t_id = delta_tensor.save_dense_tensor(tensor)
     print(f"Bulk write time: {time.time() - start} seconds")
 
-    print(f"tensor storage size: {get_size(SparkUtil.FTSF_LOCATION_FS)}")
+    print(f"tensor storage size: {get_size(SparkUtil.FTSF_TABLE)}")
     delta_tensor.spark_util.stop_session()
     return t_id
 
@@ -73,7 +73,7 @@ if __name__ == '__main__':
     benchmark_direct_serialization()
     benchmark_direct_deserialization()
 
-    shutil.rmtree(SparkUtil.FTSF_LOCATION_FS, ignore_errors=True)
+    shutil.rmtree(SparkUtil.FTSF_TABLE, ignore_errors=True)
     benchmark_ffhq_bulk_write()
     t_id = get_first_tensor_id()
     benchmark_ffhq_bulk_read(t_id)
