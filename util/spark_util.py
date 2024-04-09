@@ -20,6 +20,8 @@ def get_spark_session() -> SparkSession:
         .config("spark.driver.maxResultSize", config["spark.driver.maxResultSize"]) \
         .config("spark.driver.memory", config["spark.driver.memory"]) \
         .config("spark.executor.memory", config["spark.executor.memory"]) \
+        .config("spark.default.parallelism", config["spark.default.parallelism"]) \
+        .config("spark.sql.debug.maxToStringFields", config["spark.sql.debug.maxToStringFields"]) \
         .config("spark.hadoop.fs.s3a.aws.credentials.provider", config["spark.hadoop.fs.s3a.aws.credentials.provider"]) \
         .config("spark.hadoop.fs.s3a.access.key", config["spark.hadoop.fs.s3a.access.key"]) \
         .config("spark.hadoop.fs.s3a.secret.key", config["spark.hadoop.fs.s3a.secret.key"]) \
@@ -435,7 +437,9 @@ class SparkUtil:
         fids[0], fids[1] = fid_zero or [], fid_one or []
         values = np.array(values) if values else np.array([])
 
-        return SparseTensorCSF(fptrs=fptrs, fids=fids, values=values, dense_shape=dense_shape)
+        return SparseTensorCSF(fptrs=fptrs, fids=fids, values=values, dense_shape=dense_shape, 
+                               slice_tuple = self.__parse_slice_tuple(slice_tuple, dense_shape) if slice_tuple else None)
+
 
     def __read_mode_generic(self, tensor_id: str, slice_tuple: tuple) -> SparseTensorModeGeneric:
         df = self.spark.read.format("delta").load(SparkUtil.MODE_GENERIC_TABLE)
