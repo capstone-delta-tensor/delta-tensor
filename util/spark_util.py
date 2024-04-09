@@ -313,7 +313,7 @@ class SparkUtil:
             "dense_shape": dense_shape,
             "block_shape": block_shape,
             "index_array": indices[:, i].tolist(),
-            "value": values[i].tolist(),
+            "value": values[i].astype(float).tolist(),
         } for i in range(len(values))]
         schema = StructType([
             StructField("id", StringType(), False),
@@ -321,7 +321,7 @@ class SparkUtil:
             StructField("dense_shape", ArrayType(IntegerType())),
             StructField("block_shape", ArrayType(IntegerType())),
             StructField("index_array", ArrayType(IntegerType())),
-            StructField("value", ArrayType(DoubleType())),
+            StructField("value", ArrayType(ArrayType(DoubleType()))),
         ])
 
         df = self.spark.createDataFrame(data, schema)
@@ -466,27 +466,23 @@ class SparkUtil:
         filtered_df = df.filter(df.id == tensor_id)
         # filtered_df.show()
         dense_shape, block_shape = filtered_df.select("dense_shape", "block_shape").first()
-        if len(slice_tuple) == 0:
-            indices = np.array(filtered_df.select("index_array").rdd.map(lambda row: row[0]).collect()).transpose()
-            values = np.array(filtered_df.select("value").rdd.map(lambda row: row[0]).collect())
-            return SparseTensorModeGeneric(indices, values, block_shape, dense_shape)
-        else:
-            slice_tuple = self.__parse_slice_tuple(slice_tuple, dense_shape)
+        slice_tuple = self.__parse_slice_tuple(slice_tuple, dense_shape)
 
-            def filter_predicate(row):
-                for i, s in enumerate(slice_tuple):
-                    if s[0] <= row[0][i] * block_shape[i] < s[1]:
-                        continue
-                    else:
-                        return False
-                return True
+        def filter_predicate(row):
+            for i, s in enumerate(slice_tuple):
+                if s[0] <= row[0][i] * block_shape[i] < s[1]:
+                    continue
+                else:
+                    return False
+            return True
 
-            indices = np.array(
-                filtered_df.select("index_array").rdd.filter(filter_predicate).map(
-                    lambda row: row[0]).collect()).transpose()
-            values = np.array(filtered_df.select("index_array", "value").rdd.filter(filter_predicate).map(
-                lambda row: row[1]).collect())
-            return SparseTensorModeGeneric(indices, values, block_shape, dense_shape)
+        indices = np.array(
+            filtered_df.select("index_array").rdd.filter(filter_predicate).map(
+                lambda row: row[0]).collect()).transpose()
+        values = [np.array(_) for _ in filtered_df.select("index_array", "value").rdd.filter(filter_predicate).map(
+            lambda row: row[1]).collect()]
+
+        return SparseTensorModeGeneric(indices, values, tuple(block_shape), tuple(dense_shape))
 
     @staticmethod
     def __parse_slice_tuple(slice_tuple: tuple, dense_shape: tuple) -> tuple:

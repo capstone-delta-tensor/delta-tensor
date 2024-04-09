@@ -36,6 +36,6 @@ def get_uber_dataset() -> SparseTensorCOO:
     uber_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'dataset/uber/uber.tns')
     uber_sparse_tensor = np.loadtxt(uber_file_path, dtype=int).transpose()
     indices = uber_sparse_tensor[0:-1] - 1
-    values = uber_sparse_tensor[-1]
+    values = uber_sparse_tensor[-1].astype(float)
     dense_shape = (183, 24, 1140, 1717)
     return SparseTensorCOO(indices, values, dense_shape)
