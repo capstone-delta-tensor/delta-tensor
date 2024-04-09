@@ -23,9 +23,9 @@ def example_sparse_tensor(delta_tensor: DeltaTensor) -> None:
     print("======================================")
     print("Mode Generic example for sparse tensor")
     indices = np.array([[0, 1, 1, 1],
-                        [2, 0, 2, 1],
-                        [0, 1, 2, 1]])
-    values = np.array([3, 4, 5, -1])
+                        [2, 0, 1, 2],
+                        [0, 1, 1, 2]])
+    values = np.array([3, 4, 5, -1]).astype(float)
     dense_shape = (2, 4, 3)
     sparse = SparseTensorCOO(indices, values, dense_shape)
     print(sparse)
@@ -34,11 +34,10 @@ def example_sparse_tensor(delta_tensor: DeltaTensor) -> None:
     tensor = delta_tensor.get_sparse_tensor_by_id(t_id, layout=SparseTensorLayout.MODE_GENERIC)
     print(tensor)
 
-    torch_sparse = torch.sparse_coo_tensor(torch.tensor(sparse.indices), torch.tensor(sparse.values), dense_shape)
-    torch_result_sparse = torch.sparse_coo_tensor(torch.tensor(tensor.indices), torch.tensor(tensor.values),
-                                                  dense_shape)
-    print(torch_sparse.to_dense())
-    print(torch_result_sparse.to_dense())
+    order = np.ravel_multi_index(tensor.indices, dense_shape).argsort()
+    tensor.indices = tensor.indices[:, order]
+    tensor.values = tensor.values[order]
+    print(f"Data consistency: {tensor == sparse}")
 
 
 def example_sparse_tensor_slicing(delta_tensor: DeltaTensor) -> None:
@@ -80,31 +79,33 @@ def benchmark_writing_uber_dataset(delta_tensor: DeltaTensor, sparse: SparseTens
     print("===============================================")
     print("Mode Generic benchmark for writing uber dataset")
     start = time.time()
-    t_id = delta_tensor.save_sparse_tensor(sparse, layout=SparseTensorLayout.MODE_GENERIC, block_shape=(8, 8))
+    t_id = delta_tensor.save_sparse_tensor(sparse, layout=SparseTensorLayout.MODE_GENERIC, block_shape=(12, 256, 256))
     print(f"Tensor insertion time: {time.time() - start} seconds")
     return t_id
 
 
-def benchmark_reading_uber_dataset(delta_tensor: DeltaTensor, t_id: str) -> None:
+def benchmark_reading_uber_dataset(delta_tensor: DeltaTensor, t_id: str) -> SparseTensorCOO:
     print("===============================================")
     print("Mode Generic benchmark for reading uber dataset")
     start = time.time()
-    delta_tensor.get_sparse_tensor_by_id(t_id, layout=SparseTensorLayout.MODE_GENERIC)
+    sparse = delta_tensor.get_sparse_tensor_by_id(t_id, layout=SparseTensorLayout.MODE_GENERIC)
     print(f"Tensor full scan time: {time.time() - start} seconds")
 
     start = time.time()
     delta_tensor.get_sparse_tensor_by_id(t_id, layout=SparseTensorLayout.MODE_GENERIC,
-                                         slice_expr='[0, 0:6, :, :]')
+                                         slice_expr='[0, 0:12, :, :]')
     print(f"Tensor slicing time: {time.time() - start} seconds")
 
-    cnt = 183
+    cnt = 10
     start = time.time()
     for i in range(cnt):
         delta_tensor.get_sparse_tensor_by_id(t_id, layout=SparseTensorLayout.MODE_GENERIC,
-                                             slice_expr=f'[{i}, 6:18, :, :]')
+                                             slice_expr=f'[{i}, :, :, :]')
     time_interval = time.time() - start
     print(
         f"Tensor slicing time for {cnt} iterations: {time_interval} seconds, {time_interval / cnt} seconds per iteration")
+
+    return sparse
 
 
 if __name__ == '__main__':
@@ -127,4 +128,8 @@ if __name__ == '__main__':
     t_id = benchmark_writing_uber_dataset(delta_tensor, uber_sparse)
 
     # Test for tensor reading
-    benchmark_reading_uber_dataset(delta_tensor, t_id)
+    sparse = benchmark_reading_uber_dataset(delta_tensor, t_id)
+    order = np.ravel_multi_index(sparse.indices, sparse.dense_shape).argsort()
+    sparse.indices = sparse.indices[:, order]
+    sparse.values = sparse.values[order]
+    print(f"Data consistency {sparse == uber_sparse}")

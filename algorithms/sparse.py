@@ -97,16 +97,17 @@ def coo_to_mode_generic(tensor: SparseTensorCOO, block_shape: tuple = (), is_spa
         raise Exception("Invalid block shape")
     diff = len(tensor.dense_shape) - len(block_shape)
     block_shape = [1 if i < diff else block_shape[i - diff] for i in range(len(tensor.dense_shape))]
+    indices_shape = np.ceil(np.array(tensor.dense_shape) / block_shape).astype(int)
 
+    block_indices = tensor.indices[:] // np.array(block_shape).reshape(-1, 1)
+    keys = np.ravel_multi_index(block_indices, indices_shape)
+    value_indices = tensor.indices[:] % np.array(block_shape).reshape(-1, 1)
     indices_dict = {}
     blocks_dict = defaultdict(list)
-    for i in range(len(tensor.values)):
-        block_indices = tensor.indices[:, i] // block_shape
-        value_indices = tensor.indices[:, i] % block_shape
-        key = block_indices.tobytes()
+    for i, key in enumerate(keys):
         if key not in indices_dict:
-            indices_dict[key] = block_indices
-        blocks_dict[key].append((*value_indices, tensor.values[i]))
+            indices_dict[key] = block_indices[:, i]
+        blocks_dict[key].append((*value_indices[:, i], tensor.values[i]))
 
     indices = np.zeros((len(indices_dict), len(block_shape)), dtype=int)
     values = [] * len(indices_dict)
@@ -187,7 +188,7 @@ def mode_generic_to_coo(sparse_tensor: SparseTensorModeGeneric) -> SparseTensorC
     values_coo = [] * len(values)
     for i in range(len(values)):
         global_base_indices = (indices[:, i] * block_shape).reshape(-1, 1)
-        indices_coo.append(np.array(values[i][:-1]) + global_base_indices)
+        indices_coo.append(np.array(values[i][:-1]).astype(int) + global_base_indices)
         values_coo.append(np.array(values[i][-1]))
 
     return SparseTensorCOO(np.hstack(indices_coo), np.hstack(values_coo), dense_shape)
