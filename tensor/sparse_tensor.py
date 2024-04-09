@@ -142,7 +142,7 @@ class SparseTensorCSF:
 
 
 class SparseTensorModeGeneric:
-    def __init__(self, indices: np.ndarray, values: np.ndarray, block_shape: tuple, dense_shape: tuple):
+    def __init__(self, indices: np.ndarray, values: list[np.ndarray], block_shape: tuple, dense_shape: tuple):
         self.indices = indices
         self.values = values
         self.block_shape = block_shape

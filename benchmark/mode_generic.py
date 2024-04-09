@@ -94,7 +94,7 @@ def benchmark_reading_uber_dataset(delta_tensor: DeltaTensor, t_id: str) -> None
 
     start = time.time()
     delta_tensor.get_sparse_tensor_by_id(t_id, layout=SparseTensorLayout.MODE_GENERIC,
-                                         slice_expr='[0, 0:1, 530:540, :]')
+                                         slice_expr='[0, 0:6, :, :]')
     print(f"Tensor slicing time: {time.time() - start} seconds")
 
     cnt = 183

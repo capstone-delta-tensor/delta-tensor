@@ -6,17 +6,11 @@ from tensor.sparse_tensor import *
 MAX_BLOCK_SIZE = 1024 * 32
 
 
-def ndarray_to_mode_generic(tensor: np.ndarray) -> SparseTensorModeGeneric:
-    indices_shape, block_shape = __get_block_shapes(tensor.shape)
-    indices_size = __get_size_from_shape(indices_shape)
-    block_size = __get_size_from_shape(block_shape)
-
-    reshaped_tensor = tensor.reshape(indices_size, block_size)
-    sparse_filter = np.apply_along_axis(lambda blk: blk.any(), 1, reshaped_tensor)
-    indices = np.apply_along_axis(lambda row: row[sparse_filter], 1,
-                                  np.indices(indices_shape).reshape(len(indices_shape), -1))
-    values = reshaped_tensor[sparse_filter]
-    return SparseTensorModeGeneric(indices, values, block_shape, tensor.shape)
+def ndarray_to_mode_generic(tensor: np.ndarray, block_shape: tuple = ()) -> SparseTensorModeGeneric:
+    torch_coo = torch.tensor(tensor).to_sparse_coo()
+    return coo_to_mode_generic(
+        SparseTensorCOO(np.array(torch_coo.indices()), np.array(torch_coo.values()), tuple(torch_coo.shape)),
+        block_shape=block_shape)
 
 
 def coo_to_sparse(tensor: SparseTensorCOO, layout: SparseTensorLayout = SparseTensorLayout.MODE_GENERIC,
@@ -96,56 +90,38 @@ def coo_to_csf(tensor: SparseTensorCOO) -> SparseTensorCSF:
     return SparseTensorCSF(fptrs, fids, tensor.values, tensor.dense_shape)
 
 
-def coo_to_mode_generic(tensor: SparseTensorCOO, block_shape: tuple = ()) -> SparseTensorModeGeneric:
+def coo_to_mode_generic(tensor: SparseTensorCOO, block_shape: tuple = (), is_sparse=True) -> SparseTensorModeGeneric:
     if len(block_shape) == 0:
-        _, block_shape = __get_block_shapes(tensor.dense_shape, is_sparse=True)
-    elif len(block_shape) != len(tensor.dense_shape):
-        diff = len(tensor.dense_shape) - len(block_shape)
-        block_shape = [1 if i < diff else block_shape[i - diff] for i in range(len(tensor.dense_shape))]
+        _, block_shape = __get_block_shapes(tensor.dense_shape, is_sparse=is_sparse)
     elif len(block_shape) > len(tensor.dense_shape):
         raise Exception("Invalid block shape")
+    diff = len(tensor.dense_shape) - len(block_shape)
+    block_shape = [1 if i < diff else block_shape[i - diff] for i in range(len(tensor.dense_shape))]
 
     indices_dict = {}
-    blocks_dict = defaultdict(lambda: np.zeros(block_shape))
-    for i in range(tensor.indices.shape[1]):
+    blocks_dict = defaultdict(list)
+    for i in range(len(tensor.values)):
         block_indices = tensor.indices[:, i] // block_shape
         value_indices = tensor.indices[:, i] % block_shape
         key = block_indices.tobytes()
         if key not in indices_dict:
             indices_dict[key] = block_indices
-        blocks_dict[key][tuple(value_indices)] = tensor.values[i]
+        blocks_dict[key].append((*value_indices, tensor.values[i]))
 
     indices = np.zeros((len(indices_dict), len(block_shape)), dtype=int)
-    values = np.zeros((len(indices_dict), *block_shape))
+    values = [] * len(indices_dict)
     for i, key in enumerate(indices_dict):
         indices[i] = indices_dict[key]
-        values[i] = blocks_dict[key]
+        values.append(np.array(blocks_dict[key]).transpose())
 
-    return SparseTensorModeGeneric(indices.transpose(), values, block_shape, tensor.dense_shape)
+    return SparseTensorModeGeneric(indices.transpose(), values, tuple(block_shape), tensor.dense_shape)
 
 
 def mode_generic_to_ndarray(sparse_tensor: SparseTensorModeGeneric) -> np.ndarray:
-    indices = sparse_tensor.indices
-    values = sparse_tensor.values
-    block_shape = sparse_tensor.block_shape
-    block_size = __get_size_from_shape(block_shape)
-    dense_shape = sparse_tensor.dense_shape
-
-    if len(block_shape) == 0:
-        indices_shape = dense_shape
-    elif len(block_shape) == len(dense_shape):
-        indices_shape = (1,)
-    else:
-        indices_shape = dense_shape[:-len(block_shape)]
-    indices_size = __get_size_from_shape(indices_shape)
-    mul = [1] * len(indices_shape)
-    for i in range(len(mul) - 1, 0, -1):
-        mul[i - 1] = mul[i] * indices_shape[i]
-    sparse_filter = np.sum(indices * np.array(mul).reshape(-1, 1), axis=0)
-
-    tensor = np.zeros((indices_size, block_size))
-    tensor[sparse_filter] = values
-    return tensor.reshape(dense_shape)
+    sparse_coo = mode_generic_to_coo(sparse_tensor)
+    return np.array(
+        torch.sparse_coo_tensor(indices=torch.tensor(sparse_coo.indices), values=torch.tensor(sparse_coo.values),
+                                size=sparse_coo.dense_shape).to_dense())
 
 
 def sparse_to_coo(
@@ -207,17 +183,14 @@ def mode_generic_to_coo(sparse_tensor: SparseTensorModeGeneric) -> SparseTensorC
     block_shape = sparse_tensor.block_shape
     dense_shape = sparse_tensor.dense_shape
 
-    indices_coo = np.zeros((len(dense_shape), 0))
-    values_coo = np.zeros(0)
+    indices_coo = [] * len(values)
+    values_coo = [] * len(values)
     for i in range(len(values)):
         global_base_indices = (indices[:, i] * block_shape).reshape(-1, 1)
-        block = torch.tensor(values[i])
-        block_coo = block.to_sparse_coo()
+        indices_coo.append(np.array(values[i][:-1]) + global_base_indices)
+        values_coo.append(np.array(values[i][-1]))
 
-        indices_coo = np.hstack((indices_coo, np.array(block_coo.indices()) + global_base_indices.reshape(-1, 1)))
-        values_coo = np.append(values_coo, block_coo.values())
-
-    return SparseTensorCOO(np.array(indices_coo).transpose(), np.array(values_coo), dense_shape)
+    return SparseTensorCOO(np.hstack(indices_coo), np.hstack(values_coo), dense_shape)
 
 
 def __get_block_shapes(tensor_shape: tuple, is_sparse: bool = False) -> tuple:
