@@ -199,7 +199,11 @@ def mode_generic_to_coo(sparse_tensor: SparseTensorModeGeneric) -> SparseTensorC
         indices_coo.append(np.array(values[i][:-1]).astype(int) + global_base_indices)
         values_coo.append(np.array(values[i][-1]))
 
-    return SparseTensorCOO(np.hstack(indices_coo), np.hstack(values_coo), dense_shape)
+    sparse_coo = SparseTensorCOO(np.hstack(indices_coo), np.hstack(values_coo), dense_shape)
+    order = np.ravel_multi_index(sparse_coo.indices, sparse_coo.dense_shape).argsort()
+    sparse_coo.indices = sparse_coo.indices[:, order]
+    sparse_coo.values = sparse_coo.values[order]
+    return sparse_coo
 
 
 def __get_block_shapes(tensor_shape: tuple, is_sparse: bool = False) -> tuple:
