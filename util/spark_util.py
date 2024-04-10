@@ -157,13 +157,13 @@ class SparkUtil:
         crow_indices = sparse_tensor.crow_indices.tolist()
         col_indices = sparse_tensor.col_indices.tolist()
         values = sparse_tensor.values.tolist()
-        original_shape = sparse_tensor.original_shape
+        flattened_shape = sparse_tensor.flattened_shape
         dense_shape = sparse_tensor.dense_shape
         layout = sparse_tensor.layout.name
         data = {
             "id": tensor_id,
             "layout": layout,
-            "original_shape": list(original_shape),
+            "flattened_shape": list(flattened_shape),
             "dense_shape": list(dense_shape),
             "crow_indices": crow_indices,
             "col_indices": col_indices,
@@ -172,7 +172,7 @@ class SparkUtil:
         schema = StructType([
             StructField("id", StringType(), False),
             StructField("layout", StringType(), False),
-            StructField("original_shape", ArrayType(IntegerType())),
+            StructField("flattened_shape", ArrayType(IntegerType())),
             StructField("dense_shape", ArrayType(IntegerType())),
             StructField("crow_indices", ArrayType(IntegerType())),
             StructField("col_indices", ArrayType(IntegerType())),
@@ -188,13 +188,13 @@ class SparkUtil:
         ccol_indices = sparse_tensor.ccol_indices.tolist()
         row_indices = sparse_tensor.row_indices.tolist()
         values = sparse_tensor.values.tolist()
-        original_shape = sparse_tensor.original_shape
+        flattened_shape = sparse_tensor.flattened_shape
         dense_shape = sparse_tensor.dense_shape
         layout = sparse_tensor.layout.name
         data = {
             "id": tensor_id,
             "layout": layout,
-            "original_shape": list(original_shape),
+            "flattened_shape": list(flattened_shape),
             "dense_shape": list(dense_shape),
             "ccol_indices": ccol_indices,
             "row_indices": row_indices,
@@ -203,7 +203,7 @@ class SparkUtil:
         schema = StructType([
             StructField("id", StringType(), False),
             StructField("layout", StringType(), False),
-            StructField("original_shape", ArrayType(IntegerType())),
+            StructField("flattened_shape", ArrayType(IntegerType())),
             StructField("dense_shape", ArrayType(IntegerType())),
             StructField("ccol_indices", ArrayType(IntegerType())),
             StructField("row_indices", ArrayType(IntegerType())),
@@ -398,23 +398,23 @@ class SparkUtil:
     def __read_csr(self, tensor_id: str, slice_tuple: tuple) -> SparseTensorCSR:
         df = self.spark.read.format("delta").load(SparkUtil.CSR_TABLE)
         filtered_df = df.filter(df.id == tensor_id)
-        original_shape = filtered_df.select("original_shape").first()[0]
+        flattened_shape = filtered_df.select("flattened_shape").first()[0]
         dense_shape = filtered_df.select("dense_shape").first()[0]
         crow_indices = np.array(filtered_df.select("crow_indices").rdd.map(lambda row: row[0]).collect())[0]
         col_indices = np.array(filtered_df.select("col_indices").rdd.map(lambda row: row[0]).collect())[0]
         values = np.array(filtered_df.select("value").rdd.map(lambda row: row[0]).collect())[0]
-        return SparseTensorCSR(values, col_indices, crow_indices, original_shape, dense_shape,
+        return SparseTensorCSR(values, col_indices, crow_indices, dense_shape, flattened_shape,
                                slice_tuple = self.__parse_slice_tuple(slice_tuple, dense_shape) if slice_tuple else None)
 
     def __read_csc(self, tensor_id: str, slice_tuple: tuple) -> SparseTensorCSC:
         df = self.spark.read.format("delta").load(SparkUtil.CSC_TABLE)
         filtered_df = df.filter(df.id == tensor_id)
-        original_shape = filtered_df.select("original_shape").first()[0]
+        flattened_shape = filtered_df.select("flattened_shape").first()[0]
         dense_shape = filtered_df.select("dense_shape").first()[0]
         ccol_indices = np.array(filtered_df.select("ccol_indices").rdd.map(lambda row: row[0]).collect())[0]
         row_indices = np.array(filtered_df.select("row_indices").rdd.map(lambda row: row[0]).collect())[0]
         values = np.array(filtered_df.select("value").rdd.map(lambda row: row[0]).collect())[0]
-        return SparseTensorCSC(values, row_indices, ccol_indices, original_shape, dense_shape,
+        return SparseTensorCSC(values, row_indices, ccol_indices, dense_shape, flattened_shape,
                                slice_tuple = self.__parse_slice_tuple(slice_tuple, dense_shape) if slice_tuple else None)
 
     def __read_csf(self, tensor_id: str, slice_tuple: tuple) -> SparseTensorCSF:
