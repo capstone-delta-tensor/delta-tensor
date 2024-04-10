@@ -1,3 +1,5 @@
+import statistics
+
 from api.delta_tensor import *
 from util.data_util import get_uber_dataset
 
@@ -54,33 +56,28 @@ def example_sparse_tensor_slicing(delta_tensor: DeltaTensor) -> None:
                                                   slice_expr='[1, 0:1, :]')
     print(tensor)
 
-    torch_sparse = torch.sparse_coo_tensor(torch.tensor(sparse.indices), torch.tensor(sparse.values), dense_shape)
-    torch_result_sparse = torch.sparse_coo_tensor(torch.tensor(tensor.indices), torch.tensor(tensor.values),
-                                                  dense_shape)
-    print(torch_sparse.to_dense())
-    print(torch_result_sparse.to_dense())
 
-
-def benchmark_writing_uber_dataset(delta_tensor: DeltaTensor, sparse: SparseTensorCOO) -> str:
+def benchmark_writing_uber_dataset(delta_tensor: DeltaTensor, sparse: SparseTensorCOO) -> tuple[str, float]:
     print("===============================================")
     print("Mode Generic benchmark for writing uber dataset")
     start = time.time()
     t_id = delta_tensor.save_sparse_tensor(sparse, layout=SparseTensorLayout.MODE_GENERIC, block_shape=(12, 256, 256))
-    print(f"Tensor insertion time: {time.time() - start} seconds")
-    return t_id
+    insertion_time = time.time() - start
+    print(f"Tensor insertion time: {insertion_time} seconds")
+    return t_id, insertion_time
 
 
-def benchmark_reading_uber_dataset(delta_tensor: DeltaTensor, t_id: str) -> SparseTensorCOO:
+def benchmark_reading_uber_dataset(delta_tensor: DeltaTensor, t_id: str) -> tuple[float, float]:
     print("===============================================")
     print("Mode Generic benchmark for reading uber dataset")
     start = time.time()
     sparse = delta_tensor.get_sparse_tensor_by_id(t_id, layout=SparseTensorLayout.MODE_GENERIC)
-    print(f"Tensor full scan time: {time.time() - start} seconds")
-
-    start = time.time()
-    delta_tensor.get_sparse_tensor_by_id(t_id, layout=SparseTensorLayout.MODE_GENERIC,
-                                         slice_expr='[0, 0:12, :, :]')
-    print(f"Tensor slicing time: {time.time() - start} seconds")
+    full_scan_time = time.time() - start
+    print(f"Tensor full scan time: {full_scan_time} seconds")
+    order = np.ravel_multi_index(sparse.indices, sparse.dense_shape).argsort()
+    sparse.indices = sparse.indices[:, order]
+    sparse.values = sparse.values[order]
+    print(f"Data consistency: {sparse == uber_sparse}")
 
     cnt = 10
     start = time.time()
@@ -88,10 +85,11 @@ def benchmark_reading_uber_dataset(delta_tensor: DeltaTensor, t_id: str) -> Spar
         delta_tensor.get_sparse_tensor_by_id(t_id, layout=SparseTensorLayout.MODE_GENERIC,
                                              slice_expr=f'[{i}, :, :, :]')
     time_interval = time.time() - start
+    avg_slicing_time = time_interval / cnt
     print(
-        f"Tensor slicing time for {cnt} iterations: {time_interval} seconds, {time_interval / cnt} seconds per iteration")
+        f"Tensor slicing time for {cnt} iterations: {time_interval} seconds, {avg_slicing_time} seconds per iteration")
 
-    return sparse
+    return full_scan_time, avg_slicing_time
 
 
 if __name__ == '__main__':
@@ -107,12 +105,17 @@ if __name__ == '__main__':
     # Load uber dataset
     uber_sparse = get_uber_dataset()
 
+    # Epoch number
+    epoch = 10
+
     # Test for tensor writing
-    t_id = benchmark_writing_uber_dataset(delta_tensor, uber_sparse)
+    writing_stats = [benchmark_writing_uber_dataset(delta_tensor, uber_sparse) for _ in range(epoch)]
 
     # Test for tensor reading
-    sparse = benchmark_reading_uber_dataset(delta_tensor, t_id)
-    order = np.ravel_multi_index(sparse.indices, sparse.dense_shape).argsort()
-    sparse.indices = sparse.indices[:, order]
-    sparse.values = sparse.values[order]
-    print(f"Data consistency {sparse == uber_sparse}")
+    reading_stats = [benchmark_reading_uber_dataset(delta_tensor, _[0]) for _ in writing_stats]
+
+    # Display statistics
+    print(f"=====Uber dataset benchmark results for MODE_GENERIC=====")
+    print(f"Average tensor insertion time for {epoch} epochs: {statistics.mean([_[1] for _ in writing_stats])}")
+    print(f"Average tensor full scan time for {epoch} epochs: {statistics.mean([_[0] for _ in reading_stats])}")
+    print(f"Average tensor slicing time for {epoch} epochs: {statistics.mean([_[1] for _ in reading_stats])}")
