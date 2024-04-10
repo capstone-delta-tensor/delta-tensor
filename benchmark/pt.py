@@ -4,6 +4,7 @@ import boto3
 import torch
 from botocore.client import BaseClient
 
+from settings import config
 from tensor.sparse_tensor import SparseTensorCOO
 from util.data_util import get_uber_dataset
 from util.spark_util import SparkUtil
@@ -25,7 +26,9 @@ def benchmark_uber_dataset_as_pt(obj: BaseClient, sparse: SparseTensorCOO) -> No
 
 
 if __name__ == '__main__':
-    obj = boto3.client("s3")
+    obj = boto3.client("s3", aws_access_key_id=config["aws_access_key_id"],
+                       aws_secret_access_key=config["aws_secret_access_key"],
+                       aws_session_token=config["aws_session_token"])
 
     # Load uber dataset
     uber_sparse = get_uber_dataset()
