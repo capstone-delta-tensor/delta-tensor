@@ -1,5 +1,3 @@
-import os
-
 from api.delta_tensor import *
 from util.data_util import get_uber_dataset
 
@@ -46,7 +44,7 @@ def example_sparse_tensor_slicing(delta_tensor: DeltaTensor) -> None:
     indices = np.array([[0, 1, 1, 1],
                         [2, 0, 2, 1],
                         [0, 1, 2, 1]])
-    values = np.array([3, 4, 5, -1])
+    values = np.array([3, 4, 5, -1]).astype(float)
     dense_shape = (2, 4, 3)
     sparse = SparseTensorCOO(indices, values, dense_shape)
     print(sparse)
@@ -61,18 +59,6 @@ def example_sparse_tensor_slicing(delta_tensor: DeltaTensor) -> None:
                                                   dense_shape)
     print(torch_sparse.to_dense())
     print(torch_result_sparse.to_dense())
-
-
-def benchmark_uber_dataset_as_pt(sparse: SparseTensorCOO) -> None:
-    tensor = torch.sparse_coo_tensor(torch.tensor(sparse.indices), torch.tensor(sparse.values), sparse.dense_shape)
-    start = time.time()
-    torch.save(tensor, '/tmp/tensor.pt')
-    print(f"Tensor saving time: {time.time() - start} seconds")
-    start = time.time()
-    tensor = torch.load('/tmp/tensor.pt')
-    tensor = tensor[0]
-    SparseTensorCOO(np.array(tensor.indices), np.array(tensor.values), tensor.size)
-    print(f"Tensor loading time: {time.time() - start} seconds")
 
 
 def benchmark_writing_uber_dataset(delta_tensor: DeltaTensor, sparse: SparseTensorCOO) -> str:
@@ -120,9 +106,6 @@ if __name__ == '__main__':
 
     # Load uber dataset
     uber_sparse = get_uber_dataset()
-
-    # Test for torch pt file
-    benchmark_uber_dataset_as_pt(uber_sparse)
 
     # Test for tensor writing
     t_id = benchmark_writing_uber_dataset(delta_tensor, uber_sparse)
