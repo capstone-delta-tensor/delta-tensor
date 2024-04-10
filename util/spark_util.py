@@ -3,9 +3,10 @@ import uuid
 
 import pyspark
 from delta import configure_spark_with_delta_pip
-from pyspark.sql import SparkSession
+from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.types import *
 
+from algorithms.flatten import get_first_last_chunk_ids
 from settings import config
 from tensor.sparse_tensor import *
 
@@ -34,7 +35,7 @@ def get_spark_session() -> SparkSession:
 
 
 class SparkUtil:
-    BUCKET = config["s3.bucket.name"] if config["s3.bucket.name"] else "/tmp/delta-tensor"
+    BUCKET = "s3a://" + config["s3.bucket.name"] if config["s3.bucket.name"] else "/tmp/delta-tensor"
     FTSF_TABLE = '/'.join((BUCKET, "flattened"))
     COO_TABLE = '/'.join((BUCKET, "coo"))
     CSR_TABLE = '/'.join((BUCKET, "csr"))
@@ -56,19 +57,18 @@ class SparkUtil:
             return self.write_sparse_tensor(tensor)
         return self.write_dense_tensor(tensor)
 
-    def write_dense_tensor(self, tensor: np.ndarray, chunk_dim_chunk: int = 3) -> str:
+    def write_dense_tensor(self, tensor: np.ndarray, chunk_dim_count: int = 3) -> str:
         tensor_id = str(uuid.uuid4())
         dim_count = tensor.ndim
         dimensions = list(tensor.shape)
-        # TODO: strides
         data = [{
             "id": tensor_id,
             "chunk": chunk,
             "chunk_id": i,
             "dim_count": dim_count,
-            "chunk_dim_count": chunk_dim_chunk,
+            "chunk_dim_count": chunk_dim_count,
             "dimensions": dimensions,
-        } for i, chunk in enumerate(self.chunks_binaries(tensor, chunk_dim_chunk))]
+        } for i, chunk in enumerate(self.chunks_binaries(tensor, chunk_dim_count))]
         schema = StructType([
             StructField("id", StringType(), False),
             StructField("chunk", BinaryType(), False),
@@ -339,14 +339,33 @@ class SparkUtil:
         return self.read_dense_tensor(tensor_id, slice_tuple)
 
     def read_dense_tensor(self, tensor_id: str, slice_tuple: tuple = ()) -> np.ndarray:
-        # TODO @LiaoliaoLiu support slicing operation
+        def read_whole(tensor_df: DataFrame):
+            chunks = SparkUtil.deserialize_from(tensor_df.select('chunk').collect())
+            tensor_shape = tensor_df.select("dimensions").first()['dimensions']
+            tensor = np.concatenate(chunks, axis=0).reshape(tensor_shape)
+            return tensor
+        
+        def read_slice(tensor_df: DataFrame, slice_tuple: tuple):
+            original_tensor_shape = tensor_df.select("dimensions").first()['dimensions']
+            chunk_dim_count = tensor_df.select("chunk_dim_count").first()['chunk_dim_count']
+            chunked_tensor_shape = original_tensor_shape[0 : len(original_tensor_shape) - chunk_dim_count]
+            first_chunk_id, last_chunk_id = get_first_last_chunk_ids(chunked_tensor_shape, slice_tuple)
+            chunks = SparkUtil.deserialize_from(tensor_df
+                                                .filter((df.chunk_id >= first_chunk_id) & (df.chunk_id <= last_chunk_id))
+                                                .select('chunk')
+                                                .collect())
+            sliced_tensor_shape = tuple(i[1] - i[0] for i in slice_tuple)
+            tensor = np.concatenate(chunks, axis=0).reshape(sliced_tensor_shape)
+            return tensor
+
         df = self.spark.read.format("delta").load(SparkUtil.FTSF_TABLE)
         tensor_df = df.filter(df.id == tensor_id).sort(df.chunk_id.asc())
-        chunks = SparkUtil.deserialize_from(
-            tensor_df.select('chunk').collect())
-        tensor_shape = tensor_df.select("dimensions").first()['dimensions']
-        tensor = np.concatenate(chunks, axis=0).reshape(tensor_shape)
-        return tensor
+        
+        if slice_tuple == ():
+            return read_whole(tensor_df)
+
+        return read_slice(tensor_df, slice_tuple)
+    
 
     def read_sparse_tensor(self, tensor_id: str,
                            layout: SparseTensorLayout,
