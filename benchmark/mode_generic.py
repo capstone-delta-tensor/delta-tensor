@@ -16,7 +16,7 @@ def example_dense_tensor(delta_tensor: DeltaTensor) -> None:
     print(t_id)
     tensor = delta_tensor.get_sparse_tensor_as_dense_by_id(t_id)
     print(tensor)
-    print(np.array_equal(tensor, dense))
+    print(f"Data consistency: {np.array_equal(tensor, dense)}")
 
 
 def example_sparse_tensor(delta_tensor: DeltaTensor) -> None:
@@ -33,10 +33,6 @@ def example_sparse_tensor(delta_tensor: DeltaTensor) -> None:
     print(t_id)
     tensor = delta_tensor.get_sparse_tensor_by_id(t_id, layout=SparseTensorLayout.MODE_GENERIC)
     print(tensor)
-
-    order = np.ravel_multi_index(tensor.indices, dense_shape).argsort()
-    tensor.indices = tensor.indices[:, order]
-    tensor.values = tensor.values[order]
     print(f"Data consistency: {tensor == sparse}")
 
 
@@ -74,9 +70,6 @@ def benchmark_reading_uber_dataset(delta_tensor: DeltaTensor, t_id: str) -> tupl
     sparse = delta_tensor.get_sparse_tensor_by_id(t_id, layout=SparseTensorLayout.MODE_GENERIC)
     full_scan_time = time.time() - start
     print(f"Tensor full scan time: {full_scan_time} seconds")
-    order = np.ravel_multi_index(sparse.indices, sparse.dense_shape).argsort()
-    sparse.indices = sparse.indices[:, order]
-    sparse.values = sparse.values[order]
     print(f"Data consistency: {sparse == uber_sparse}")
 
     cnt = 10
