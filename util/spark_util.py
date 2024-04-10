@@ -396,7 +396,6 @@ class SparkUtil:
         return SparseTensorCOO(indices, values, dense_shape)
 
     def __read_csr(self, tensor_id: str, slice_tuple: tuple) -> SparseTensorCSR:
-        # TODO @evanyfzhou support slicing operation
         df = self.spark.read.format("delta").load(SparkUtil.CSR_TABLE)
         filtered_df = df.filter(df.id == tensor_id)
         original_shape = filtered_df.select("original_shape").first()[0]
@@ -404,10 +403,10 @@ class SparkUtil:
         crow_indices = np.array(filtered_df.select("crow_indices").rdd.map(lambda row: row[0]).collect())[0]
         col_indices = np.array(filtered_df.select("col_indices").rdd.map(lambda row: row[0]).collect())[0]
         values = np.array(filtered_df.select("value").rdd.map(lambda row: row[0]).collect())[0]
-        return SparseTensorCSR(values, col_indices, crow_indices, original_shape, dense_shape)
+        return SparseTensorCSR(values, col_indices, crow_indices, original_shape, dense_shape,
+                               slice_tuple = self.__parse_slice_tuple(slice_tuple, dense_shape) if slice_tuple else None)
 
     def __read_csc(self, tensor_id: str, slice_tuple: tuple) -> SparseTensorCSC:
-        # TODO @evanyfzhou support slicing operation
         df = self.spark.read.format("delta").load(SparkUtil.CSC_TABLE)
         filtered_df = df.filter(df.id == tensor_id)
         original_shape = filtered_df.select("original_shape").first()[0]
@@ -415,7 +414,8 @@ class SparkUtil:
         ccol_indices = np.array(filtered_df.select("ccol_indices").rdd.map(lambda row: row[0]).collect())[0]
         row_indices = np.array(filtered_df.select("row_indices").rdd.map(lambda row: row[0]).collect())[0]
         values = np.array(filtered_df.select("value").rdd.map(lambda row: row[0]).collect())[0]
-        return SparseTensorCSC(values, row_indices, ccol_indices, original_shape, dense_shape)
+        return SparseTensorCSC(values, row_indices, ccol_indices, original_shape, dense_shape,
+                               slice_tuple = self.__parse_slice_tuple(slice_tuple, dense_shape) if slice_tuple else None)
 
     def __read_csf(self, tensor_id: str, slice_tuple: tuple) -> SparseTensorCSF:
         # TODO @kevinvan13 support slicing operation

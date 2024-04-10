@@ -51,7 +51,21 @@ def example_sparse_tensor_csr_4d(delta_tensor: DeltaTensor) -> None:
     print("original tensor: ", sparse)
     t_id = delta_tensor.save_sparse_tensor(sparse, layout=SparseTensorLayout.CSR)
     print(t_id)
-    tensor = delta_tensor.get_sparse_tensor_by_id(t_id, layout=SparseTensorLayout.CSR, slice_expr="[2:4]")
+    tensor = delta_tensor.get_sparse_tensor_by_id(t_id, layout=SparseTensorLayout.CSR)
+    print("restored tensor: ", tensor)
+
+def example_sparse_tensor_slicing(delta_tensor: DeltaTensor) -> None:
+    indices = np.array([[0, 1, 1, 1],
+                        [2, 0, 2, 1],
+                        [0, 1, 2, 1]])
+    values = np.array([3, 4, 5, -1])
+    dense_shape = (2, 4, 3)
+    sparse = SparseTensorCOO(indices, values, dense_shape)
+    print("original tensor: ", sparse)
+    t_id = delta_tensor.save_sparse_tensor(sparse, layout=SparseTensorLayout.CSR)
+    print(t_id)
+    tensor = delta_tensor.get_sparse_tensor_by_id(t_id, layout=SparseTensorLayout.CSR,
+                                                    slice_expr='[0, :]')
     print("restored tensor: ", tensor)
 
 def benchmark_uber_dataset(delta_tensor: DeltaTensor) -> None:
@@ -70,6 +84,9 @@ if __name__ == '__main__':
 
     # Test for sparse tensor
     example_sparse_tensor_csr_4d(delta_tensor)
+
+    # Test for slicing tensor
+    example_sparse_tensor_slicing(delta_tensor)
 
     # Test for uber set
     benchmark_uber_dataset(delta_tensor)

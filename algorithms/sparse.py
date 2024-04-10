@@ -165,11 +165,19 @@ def csr_to_coo(sparse_tensor: SparseTensorCSR) -> SparseTensorCOO:
     indices = coo.indices().numpy()
     values = coo.values().numpy()
     if len(sparse_tensor.original_shape) == 2:
-        return SparseTensorCOO(indices, values, sparse_tensor.dense_shape)
+        if sparse_tensor.slice_tuple:
+            start_index, end_index = sparse_tensor.slice_tuple[0]
+            return SparseTensorCOO(indices[start_index:end_index], values[start_index:end_index], sparse_tensor.dense_shape)
+        else:
+            return SparseTensorCOO(indices, values, sparse_tensor.dense_shape)
     else:
         flat_indices = indices[0] * sparse_tensor.dense_shape[-1] + indices[1]
         restored_indices = np.array(np.unravel_index(flat_indices, sparse_tensor.original_shape)).astype(np.int64)
-        return SparseTensorCOO(restored_indices, values, sparse_tensor.original_shape)
+        if sparse_tensor.slice_tuple:
+            start_index, end_index = sparse_tensor.slice_tuple[0]
+            return SparseTensorCOO(restored_indices[start_index:end_index], values[start_index:end_index], sparse_tensor.original_shape)
+        else:
+            return SparseTensorCOO(restored_indices, values, sparse_tensor.original_shape)
 
 
 def csc_to_coo(sparse_tensor: SparseTensorCSC) -> SparseTensorCOO:
@@ -180,11 +188,19 @@ def csc_to_coo(sparse_tensor: SparseTensorCSC) -> SparseTensorCOO:
     indices = coo.indices().numpy()
     values = coo.values().numpy()
     if len(sparse_tensor.original_shape) == 2:
-        return SparseTensorCOO(indices, values, sparse_tensor.dense_shape)
+        if sparse_tensor.slice_tuple:
+            start_index, end_index = sparse_tensor.slice_tuple[0]
+            return SparseTensorCOO(indices[start_index:end_index], values[start_index:end_index], sparse_tensor.dense_shape)
+        else:
+            return SparseTensorCOO(indices, values, sparse_tensor.dense_shape)
     else:
         flat_indices = indices[0] * sparse_tensor.dense_shape[1] + indices[1]
         restored_indices = np.array(np.unravel_index(flat_indices, sparse_tensor.original_shape)).astype(np.int64)
-        return SparseTensorCOO(restored_indices, values, sparse_tensor.original_shape)
+        if sparse_tensor.slice_tuple:
+            start_index, end_index = sparse_tensor.slice_tuple[0]
+            return SparseTensorCOO(restored_indices[start_index:end_index], values[start_index:end_index], sparse_tensor.original_shape)
+        else:
+            return SparseTensorCOO(restored_indices, values, sparse_tensor.original_shape)
 
 def csf_to_coo(sparse_tensor: SparseTensorCSF) -> SparseTensorCOO:
     
