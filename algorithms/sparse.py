@@ -31,33 +31,47 @@ def coo_to_sparse(tensor: SparseTensorCOO, layout: SparseTensorLayout = SparseTe
 
 
 def coo_to_csr(tensor: SparseTensorCOO) -> SparseTensorCSR:
-    original_shape = tensor.dense_shape
-    for dim, size in enumerate(original_shape):
+    for dim, size in enumerate(tensor.dense_shape):
         if np.any(tensor.indices[dim, :] < 0) or np.any(tensor.indices[dim, :] >= size):
             print(f"Out of bounds indices found in dimension {dim}:")
             print("Indices should be within:", (0, size - 1))
             out_of_bounds_indices = tensor.indices[
                 dim, np.logical_or(tensor.indices[dim, :] < 0, tensor.indices[dim, :] >= size)]
             print("Out of bounds indices:", np.unique(out_of_bounds_indices))
-    if len(original_shape) == 2:
+    if len(tensor.dense_shape) == 2:
         coo = torch.sparse_coo_tensor(tensor.indices, tensor.values, tensor.dense_shape, dtype=torch.float32)
     else:
-        flat_indices = np.ravel_multi_index(tensor.indices, dims=original_shape)
-        new_dense_shape = (np.prod(original_shape[:-1]), original_shape[-1])
-        flat_row_indices = flat_indices // original_shape[-1]
-        flat_col_indices = flat_indices % original_shape[-1]
+        flat_indices = np.ravel_multi_index(tensor.indices, dims=tensor.dense_shape)
+        flattened_shape = (np.prod(tensor.dense_shape[:-1]), tensor.dense_shape[-1])
+        flat_row_indices = flat_indices // tensor.dense_shape[-1]
+        flat_col_indices = flat_indices % tensor.dense_shape[-1]
         flattened_2D_indices = np.vstack((flat_row_indices, flat_col_indices))
-        coo = torch.sparse_coo_tensor(flattened_2D_indices, tensor.values, new_dense_shape, dtype=torch.float32)
+        coo = torch.sparse_coo_tensor(flattened_2D_indices, tensor.values, flattened_shape, dtype=torch.float32)
     csr = coo.to_sparse_csr()
-    return SparseTensorCSR(csr.values().numpy(), csr.col_indices().numpy(), csr.crow_indices().numpy(), original_shape,
+    return SparseTensorCSR(csr.values().numpy(), csr.col_indices().numpy(), csr.crow_indices().numpy(), tensor.dense_shape,
                            csr.shape)
 
 
 def coo_to_csc(tensor: SparseTensorCOO) -> SparseTensorCSC:
-    coo = torch.sparse_coo_tensor(tensor.indices, tensor.values, tensor.dense_shape, dtype=torch.float32)
+    for dim, size in enumerate(tensor.dense_shape):
+        if np.any(tensor.indices[dim, :] < 0) or np.any(tensor.indices[dim, :] >= size):
+            print(f"Out of bounds indices found in dimension {dim}:")
+            print("Indices should be within:", (0, size - 1))
+            out_of_bounds_indices = tensor.indices[
+                dim, np.logical_or(tensor.indices[dim, :] < 0, tensor.indices[dim, :] >= size)]
+            print("Out of bounds indices:", np.unique(out_of_bounds_indices))
+    if len(tensor.dense_shape) == 2:
+        coo = torch.sparse_coo_tensor(tensor.indices, tensor.values, tensor.dense_shape, dtype=torch.float32)
+    else:
+        flat_indices = np.ravel_multi_index(tensor.indices, dims=tensor.dense_shape)
+        flattened_shape = (tensor.dense_shape[0], np.prod(tensor.dense_shape[1:]))
+        flat_col_indices = flat_indices // tensor.dense_shape[0]
+        flat_row_indices = flat_indices % tensor.dense_shape[0]
+        flattened_2D_indices = np.vstack((flat_row_indices, flat_col_indices))
+        coo = torch.sparse_coo_tensor(flattened_2D_indices, tensor.values, flattened_shape, dtype=torch.float32)
     csc = coo.to_sparse_csc()
-    return SparseTensorCSC(csc.values().numpy(), csc.row_indices.numpy(), csc.ccol_indices().numpy(),
-                           tensor.dense_shape)
+    return SparseTensorCSC(csc.values().numpy(), csc.row_indices().numpy(), csc.ccol_indices().numpy(), tensor.dense_shape,
+                           csc.shape)
 
 
 def coo_to_csf(tensor: SparseTensorCOO) -> SparseTensorCSF:
@@ -144,26 +158,47 @@ def sparse_to_coo(
 
 def csr_to_coo(sparse_tensor: SparseTensorCSR) -> SparseTensorCOO:
     csr = torch.sparse_csr_tensor(sparse_tensor.crow_indices, sparse_tensor.col_indices, sparse_tensor.values,
-                                  sparse_tensor.dense_shape, dtype=torch.float32)
+                                  sparse_tensor.flattened_shape, dtype=torch.float32)
     coo = csr.to_sparse_coo()
     indices = coo.indices().numpy()
     values = coo.values().numpy()
-    if len(sparse_tensor.original_shape) == 2:
-        return SparseTensorCOO(indices, values, sparse_tensor.dense_shape)
+    if len(sparse_tensor.dense_shape) == 2:
+        if sparse_tensor.slice_tuple:
+            start_index, end_index = sparse_tensor.slice_tuple[0]
+            return SparseTensorCOO(indices[start_index:end_index], values[start_index:end_index], sparse_tensor.dense_shape)
+        else:
+            return SparseTensorCOO(indices, values, sparse_tensor.dense_shape)
     else:
-        flat_indices = indices[0] * sparse_tensor.dense_shape[-1] + indices[1]
-        restored_indices = np.array(np.unravel_index(flat_indices, sparse_tensor.original_shape)).astype(np.int64)
-        return SparseTensorCOO(restored_indices, values, sparse_tensor.original_shape)
+        flat_indices = indices[0] * sparse_tensor.flattened_shape[-1] + indices[1]
+        restored_indices = np.array(np.unravel_index(flat_indices, sparse_tensor.dense_shape)).astype(np.int64)
+        if sparse_tensor.slice_tuple:
+            start_index, end_index = sparse_tensor.slice_tuple[0]
+            return SparseTensorCOO(restored_indices[start_index:end_index], values[start_index:end_index], sparse_tensor.dense_shape)
+        else:
+            return SparseTensorCOO(restored_indices, values, sparse_tensor.dense_shape)
 
 
 def csc_to_coo(sparse_tensor: SparseTensorCSC) -> SparseTensorCOO:
     csc = torch.sparse_csc_tensor(sparse_tensor.ccol_indices, sparse_tensor.row_indices, sparse_tensor.values,
-                                  sparse_tensor.dense_shape, dtype=torch.float32)
-    coo = csc.to_sparse_coo()
+                                  sparse_tensor.flattened_shape, dtype=torch.float32)
+    coo = csc.to_sparse_coo().coalesce()
+    print("coo: ", coo)
     indices = coo.indices().numpy()
     values = coo.values().numpy()
-    return SparseTensorCOO(indices, values, sparse_tensor.dense_shape)
-
+    if len(sparse_tensor.dense_shape) == 2:
+        if sparse_tensor.slice_tuple:
+            start_index, end_index = sparse_tensor.slice_tuple[0]
+            return SparseTensorCOO(indices[start_index:end_index], values[start_index:end_index], sparse_tensor.dense_shape)
+        else:
+            return SparseTensorCOO(indices, values, sparse_tensor.dense_shape)
+    else:
+        flat_indices = indices[0] * sparse_tensor.flattened_shape[1] + indices[1]
+        restored_indices = np.array(np.unravel_index(flat_indices, sparse_tensor.dense_shape)).astype(np.int64)
+        if sparse_tensor.slice_tuple:
+            start_index, end_index = sparse_tensor.slice_tuple[0]
+            return SparseTensorCOO(restored_indices[start_index:end_index], values[start_index:end_index], sparse_tensor.dense_shape)
+        else:
+            return SparseTensorCOO(restored_indices, values, sparse_tensor.dense_shape)
 
 def csf_to_coo(sparse_tensor: SparseTensorCSF) -> SparseTensorCOO:
     
