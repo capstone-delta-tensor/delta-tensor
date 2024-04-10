@@ -62,9 +62,9 @@ def get_size(path: str) -> str:
 
 
 def build_s3_client():
-    return boto3.client("s3", aws_access_key_id=config["aws_access_key_id"],
-                       aws_secret_access_key=config["aws_secret_access_key"],
-                       aws_session_token=config["aws_session_token"]) 
+    return boto3.client("s3", aws_access_key_id=config["spark.hadoop.fs.s3a.access.key"],
+                       aws_secret_access_key=config["spark.hadoop.fs.s3a.secret.key"],
+                       aws_session_token=config["spark.hadoop.fs.s3a.session.token"]) 
 
 
 def put_object_to_s3(byte_data: bytes, key: str, is_large: bool = False, bucket: str = get_s3_bucket()) -> None:
