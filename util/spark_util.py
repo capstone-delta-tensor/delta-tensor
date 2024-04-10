@@ -32,7 +32,7 @@ def get_spark_session() -> SparkSession:
 
 
 class SparkUtil:
-    BUCKET = config["s3.bucket.name"] if config["s3.bucket.name"] else "/tmp/delta-tensor"
+    BUCKET = "s3a://" + config["s3.bucket.name"] if config["s3.bucket.name"] else "/tmp/delta-tensor"
     FTSF_TABLE = '/'.join((BUCKET, "flattened"))
     COO_TABLE = '/'.join((BUCKET, "coo"))
     CSR_TABLE = '/'.join((BUCKET, "csr"))
