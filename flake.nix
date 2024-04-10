@@ -13,7 +13,7 @@
     {
       devShells = forEachSupportedSystem ({ pkgs }: {
         default = pkgs.mkShell {
-          packages = with pkgs; [ python311 virtualenv jdk] ++
+          packages = with pkgs; [ python311 virtualenv jdk awscli] ++
             (with pkgs.python311Packages; [ pip ]);
 
           shellHook = ''
