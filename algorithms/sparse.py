@@ -166,14 +166,22 @@ def csc_to_coo(sparse_tensor: SparseTensorCSC) -> SparseTensorCOO:
 
 
 def csf_to_coo(sparse_tensor: SparseTensorCSF) -> SparseTensorCOO:
+    
     expanded_indices = []
     expanded_values = []
-
-    # Loop through all values to expand each row back to its original indices
-    for val_index in range(len(sparse_tensor.values)):
-        path, value = sparse_tensor.expand_row(val_index)
-        expanded_indices.append(path)
-        expanded_values.append(value)
+    if sparse_tensor.slice_tuple:
+        left, right = sparse_tensor.get_value_range()
+        # Loop through the values in specific range(slice) to expand each row back to its original indices
+        for val_index in range(left, right):
+            path, value = sparse_tensor.expand_row(val_index)
+            expanded_indices.append(path)
+            expanded_values.append(value)
+    else:    
+        # Loop through all values to expand each row back to its original indices
+        for val_index in range(len(sparse_tensor.values)):
+            path, value = sparse_tensor.expand_row(val_index)
+            expanded_indices.append(path)
+            expanded_values.append(value)
 
     return SparseTensorCOO(np.array(expanded_indices).transpose(), np.array(expanded_values), sparse_tensor.dense_shape)
 
