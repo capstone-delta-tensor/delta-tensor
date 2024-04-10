@@ -65,12 +65,13 @@ class SparseTensorCSC:
 
 
 class SparseTensorCSF:
-    def __init__(self, fptrs: np.ndarray, fids: np.ndarray, values: np.ndarray, dense_shape: tuple):
+    def __init__(self, fptrs: np.ndarray, fids: np.ndarray, values: np.ndarray, dense_shape: tuple, slice_tuple: tuple = None):
         self.fptrs = fptrs
         self.fids = fids
         self.values = values
         self.dense_shape = dense_shape
         self.layout = SparseTensorLayout.CSF
+        self.slice_tuple = slice_tuple
 
     def _format_subarray(self, array):
         """Formats a subarray to show the first three and last three elements."""
@@ -139,6 +140,21 @@ class SparseTensorCSF:
                 val_index = left
 
         return path, self.values[original_val_index]
+    
+    def get_value_range(self):
+        first_dimension = self.slice_tuple[0]
+        left = first_dimension[0]
+        right = first_dimension[1]
+        depth = len(self.fptrs)
+        for level in range(0, depth):
+            left = self.fptrs[level][left]
+            right = self.fptrs[level][right]
+
+        return (left, right)
+
+
+
+
 
 
 class SparseTensorModeGeneric:
