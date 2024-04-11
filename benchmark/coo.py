@@ -23,7 +23,6 @@ def benchmark_uber_dataset(delta_tensor: DeltaTensor) -> None:
     retrieved = delta_tensor.get_sparse_tensor_by_id(
         t_id, layout=SparseTensorLayout.COO)
     print(f"Tensor retrieving time: {time.time() - start} seconds")
-    
 
 
 if __name__ == '__main__':
