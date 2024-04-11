@@ -378,7 +378,7 @@ class SparkUtil:
             case _:
                 raise Exception(f"Layout {layout} not supported")
 
-    def __read_coo(self, tensor_id: str) -> SparseTensorCOO:
+    def __read_coo(self, tensor_id: str, slice_tuple: tuple) -> SparseTensorCOO:
         df = self.spark.read.format("delta").load(SparkUtil.COO_TABLE)
         filtered_df = df.filter(df.id == tensor_id)
         # print(filtered_df.show())
