@@ -112,28 +112,26 @@ class SparkUtil:
 
     def __write_coo(self, sparse_tensor: SparseTensorCOO) -> str:
         tensor_id = str(uuid.uuid4())
-        indices = sparse_tensor.indices.tolist()  # Convert ndarray to list
-        # Convert ndarray to list
-        values = [float(value) for value in sparse_tensor.values.tolist()]
+        indices = sparse_tensor.indices
+        values = sparse_tensor.values
         layout = sparse_tensor.layout.name
-        dense_shape = list(sparse_tensor.dense_shape)  # Convert tuple to list
+        dense_shape = list(sparse_tensor.dense_shape)
         data = [{
             "id": tensor_id,
             "layout": layout,
             "dense_shape": dense_shape,
-            "indices": indices,
-            "value": values,
-        }]
+            "indices": indices[:, i].tolist(),
+            "value": float(values[i]),
+        } for i in range(len(values))]
         schema = StructType([
             StructField("id", StringType(), False),
             StructField("layout", StringType(), False),
             StructField("dense_shape", ArrayType(IntegerType())),
-            # Expect a list of lists for indices
-            StructField("indices", ArrayType(ArrayType(IntegerType()))),
-            # Expect a list of floats for values
-            StructField("value", ArrayType(DoubleType())),
+            StructField("indices", ArrayType(IntegerType())),
+            StructField("value", DoubleType()),
         ])
         df = self.spark.createDataFrame(data, schema)
+        # print(df.show())
         df.write.format("delta").mode("append").save("/tmp/delta-tensor-coo")
         return tensor_id
 
@@ -343,15 +341,18 @@ class SparkUtil:
     def __read_coo(self, tensor_id: str) -> SparseTensorCOO:
         df = self.spark.read.format("delta").load("/tmp/delta-tensor-coo")
         filtered_df = df.filter(df.id == tensor_id)
-        indices, values, dense_shape = filtered_df.select(
-            "indices", "value", "dense_shape").first()
-
-        # Convert lists to numpy arrays
-        indices = np.array(indices)
-        values = np.array(values, dtype=float)
-        dense_shape = np.array(dense_shape)
-
-        return SparseTensorCOO(indices, values, dense_shape)
+        # print(filtered_df.show())
+        selected_data = filtered_df.select(
+            "indices", "value", "dense_shape").collect()
+        dense_shape = tuple(
+            selected_data[0]['dense_shape']) if selected_data else None
+        values = [int(row['value']) if row['value'].is_integer()
+                  else row['value'] for row in selected_data]
+        values = np.array(values)
+        indices = [row['indices'] for row in selected_data]
+        indices = np.array(indices).transpose()
+        tensor = SparseTensorCOO(indices, values, dense_shape)
+        return tensor
 
     def __read_csr(self, tensor_id: str) -> SparseTensorCSR:
         df = self.spark.read.format("delta").load("/tmp/delta-tensor-csr")
