@@ -1,17 +1,13 @@
-import shutil
-import subprocess
+import io
 
 from api.delta_tensor import *
-from util.data_util import read_ffhq_as_tensor
+from util.data_util import *
 from random import randint
 
-NUMBER_OF_IMG = 10000
+NUMBER_OF_IMG = 7000
 SLICE_SIZE = 100
-DENSE_TENSOR_BINARY_LOCATION = '/tmp/dense_tensor_binary'
-
-
-def get_size(path: str) -> str:
-    return subprocess.check_output(['du', '-sh', path]).split()[0].decode('utf-8')
+S3_BINARY_KEY = 'tmp/dense_tensor_binary'
+S3_FTSF_PREFIX = 'flattened'
 
 
 def get_first_tensor_id() -> str:
@@ -28,11 +24,14 @@ def benchmark_direct_serialization() -> None:
     tensor = read_ffhq_as_tensor(NUMBER_OF_IMG)
 
     start = time.time()
-    with open(DENSE_TENSOR_BINARY_LOCATION, 'wb') as f:
+    with io.BytesIO() as f:
         np.save(f, tensor)
+        f.seek(0)
+        byte_data = f.read()
+    put_object_to_s3(byte_data, S3_BINARY_KEY)
     print(f"Bulk write time: {time.time() - start} seconds")
 
-    print(f"tensor storage size: {get_size(DENSE_TENSOR_BINARY_LOCATION)}")
+    print(f"tensor storage size: {get_size(get_s3_location(S3_BINARY_KEY))}")
 
 
 def benchmark_direct_deserialization() -> np.ndarray:
@@ -40,8 +39,7 @@ def benchmark_direct_deserialization() -> np.ndarray:
     print("Direct deserialization test for the ffhq dataset")
 
     start = time.time()
-    with open(DENSE_TENSOR_BINARY_LOCATION, 'rb') as f:
-        deserialized_tensor = np.load(f)
+    deserialized_tensor = np.load(io.BytesIO(get_s3_object(S3_BINARY_KEY)))
     print(f"Bulk read time: {time.time() - start} seconds")
     return deserialized_tensor
 
@@ -56,7 +54,7 @@ def benchmark_ffhq_bulk_write() -> str:
     t_id = delta_tensor.save_dense_tensor(tensor)
     print(f"Bulk write time: {time.time() - start} seconds")
 
-    print(f"tensor storage size: {get_size(SparkUtil.FTSF_TABLE)}")
+    print(f"tensor storage size: {get_size(get_s3_location(S3_FTSF_PREFIX))}")
     delta_tensor.spark_util.stop_session()
     return t_id
 
@@ -72,15 +70,16 @@ def benchmark_ffhq_bulk_read(tensor_id: str) -> np.ndarray:
     delta_tensor.spark_util.stop_session()
     return tensor
 
+
 def benchmark_direct_deserialization_and_slice(slice_dim_start: int, slice_dim_end: int) -> np.ndarray:
     print("=======================================")
-    print("Direct deserialization test for the ffhq dataset")
+    print("Direct deserialization part read test for the ffhq dataset")
 
     start = time.time()
-    with open(DENSE_TENSOR_BINARY_LOCATION, 'rb') as f:
-        deserialized_tensor = np.load(f)[slice_dim_start:slice_dim_end, :]
+    deserialized_tensor = np.load(io.BytesIO(get_s3_object(S3_BINARY_KEY)))[slice_dim_start:slice_dim_end, :]
     print(f"Slice read time: {time.time() - start} seconds")
     return deserialized_tensor
+
 
 def benchmark_ffhq_part_read(tensor_id: str, slice_dim_start: int, slice_dim_end: int) -> np.ndarray:
     print("=======================================")
@@ -95,15 +94,17 @@ def benchmark_ffhq_part_read(tensor_id: str, slice_dim_start: int, slice_dim_end
 
 
 if __name__ == '__main__':
+    delete_s3_prefix(S3_BINARY_KEY)
+    delete_s3_prefix(S3_FTSF_PREFIX)
     benchmark_direct_serialization()
     bulk_direct = benchmark_direct_deserialization()
 
-    shutil.rmtree(SparkUtil.FTSF_TABLE, ignore_errors=True)
     benchmark_ffhq_bulk_write()
     t_id = get_first_tensor_id()
     bulk_ftsf = benchmark_ffhq_bulk_read(t_id)
 
     print(f"Data consistency {np.array_equal(bulk_direct, bulk_ftsf)}")
+
 
     slice_dim_start = randint(0, NUMBER_OF_IMG - SLICE_SIZE)
     slice_dim_end = slice_dim_start + SLICE_SIZE

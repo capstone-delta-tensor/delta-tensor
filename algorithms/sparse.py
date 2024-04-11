@@ -1,24 +1,16 @@
 import math
-import torch
 from collections import Counter, deque, defaultdict
-
 
 from tensor.sparse_tensor import *
 
 MAX_BLOCK_SIZE = 1024 * 32
 
 
-def ndarray_to_mode_generic(tensor: np.ndarray) -> SparseTensorModeGeneric:
-    indices_shape, block_shape = __get_block_shapes(tensor.shape)
-    indices_size = __get_size_from_shape(indices_shape)
-    block_size = __get_size_from_shape(block_shape)
-
-    reshaped_tensor = tensor.reshape(indices_size, block_size)
-    sparse_filter = np.apply_along_axis(lambda blk: blk.any(), 1, reshaped_tensor)
-    indices = np.apply_along_axis(lambda row: row[sparse_filter], 1,
-                                  np.indices(indices_shape).reshape(len(indices_shape), -1))
-    values = reshaped_tensor[sparse_filter]
-    return SparseTensorModeGeneric(indices, values, block_shape, tensor.shape)
+def ndarray_to_mode_generic(tensor: np.ndarray, block_shape: tuple = ()) -> SparseTensorModeGeneric:
+    torch_coo = torch.tensor(tensor).to_sparse_coo()
+    return coo_to_mode_generic(
+        SparseTensorCOO(np.array(torch_coo.indices()), np.array(torch_coo.values()), tuple(torch_coo.shape)),
+        block_shape=block_shape)
 
 
 def coo_to_sparse(tensor: SparseTensorCOO, layout: SparseTensorLayout = SparseTensorLayout.MODE_GENERIC,
@@ -39,25 +31,58 @@ def coo_to_sparse(tensor: SparseTensorCOO, layout: SparseTensorLayout = SparseTe
 
 
 def coo_to_csr(tensor: SparseTensorCOO) -> SparseTensorCSR:
-    coo = torch.sparse_coo_tensor(tensor.indices, tensor.values, tensor.dense_shape, dtype=torch.float32)
+    for dim, size in enumerate(tensor.dense_shape):
+        if np.any(tensor.indices[dim, :] < 0) or np.any(tensor.indices[dim, :] >= size):
+            print(f"Out of bounds indices found in dimension {dim}:")
+            print("Indices should be within:", (0, size - 1))
+            out_of_bounds_indices = tensor.indices[
+                dim, np.logical_or(tensor.indices[dim, :] < 0, tensor.indices[dim, :] >= size)]
+            print("Out of bounds indices:", np.unique(out_of_bounds_indices))
+    if len(tensor.dense_shape) == 2:
+        coo = torch.sparse_coo_tensor(tensor.indices, tensor.values, tensor.dense_shape, dtype=torch.float32)
+    else:
+        flat_indices = np.ravel_multi_index(tensor.indices, dims=tensor.dense_shape)
+        flattened_shape = (np.prod(tensor.dense_shape[:-1]), tensor.dense_shape[-1])
+        flat_row_indices = flat_indices // tensor.dense_shape[-1]
+        flat_col_indices = flat_indices % tensor.dense_shape[-1]
+        flattened_2D_indices = np.vstack((flat_row_indices, flat_col_indices))
+        coo = torch.sparse_coo_tensor(flattened_2D_indices, tensor.values, flattened_shape, dtype=torch.float32)
     csr = coo.to_sparse_csr()
-    return SparseTensorCSR(csr.values().numpy(), csr.col_indices().numpy(), csr.crow_indices().numpy(), tensor.dense_shape)
+    return SparseTensorCSR(csr.values().numpy(), csr.col_indices().numpy(), csr.crow_indices().numpy(), tensor.dense_shape,
+                           csr.shape)
+
 
 def coo_to_csc(tensor: SparseTensorCOO) -> SparseTensorCSC:
-    coo = torch.sparse_coo_tensor(tensor.indices, tensor.values, tensor.dense_shape, dtype=torch.float32)
+    for dim, size in enumerate(tensor.dense_shape):
+        if np.any(tensor.indices[dim, :] < 0) or np.any(tensor.indices[dim, :] >= size):
+            print(f"Out of bounds indices found in dimension {dim}:")
+            print("Indices should be within:", (0, size - 1))
+            out_of_bounds_indices = tensor.indices[
+                dim, np.logical_or(tensor.indices[dim, :] < 0, tensor.indices[dim, :] >= size)]
+            print("Out of bounds indices:", np.unique(out_of_bounds_indices))
+    if len(tensor.dense_shape) == 2:
+        coo = torch.sparse_coo_tensor(tensor.indices, tensor.values, tensor.dense_shape, dtype=torch.float32)
+    else:
+        flat_indices = np.ravel_multi_index(tensor.indices, dims=tensor.dense_shape)
+        flattened_shape = (tensor.dense_shape[0], np.prod(tensor.dense_shape[1:]))
+        flat_col_indices = flat_indices // tensor.dense_shape[0]
+        flat_row_indices = flat_indices % tensor.dense_shape[0]
+        flattened_2D_indices = np.vstack((flat_row_indices, flat_col_indices))
+        coo = torch.sparse_coo_tensor(flattened_2D_indices, tensor.values, flattened_shape, dtype=torch.float32)
     csc = coo.to_sparse_csc()
-    return SparseTensorCSC(csc.values().numpy(), csc.row_indices.numpy(), csc.ccol_indices().numpy(), tensor.dense_shape)
+    return SparseTensorCSC(csc.values().numpy(), csc.row_indices().numpy(), csc.ccol_indices().numpy(), tensor.dense_shape,
+                           csc.shape)
 
 
 def coo_to_csf(tensor: SparseTensorCOO) -> SparseTensorCSF:
     dim = len(tensor.indices)
 
     # Initialize CSF structure components
-    fptrs = [[0] for _ in range(dim-1)]
+    fptrs = [[0] for _ in range(dim - 1)]
     fids = [[] for _ in range(dim)]
     vals = tensor.values.tolist()
 
-     # array, row_id, start, len
+    # array, row_id, start, len
     root = (tensor.indices[0], 0, 0, len(tensor.indices[0]))
     queue = deque([root])
     while queue:
@@ -65,71 +90,53 @@ def coo_to_csf(tensor: SparseTensorCOO) -> SparseTensorCSF:
         while size > 0:
             size -= 1
             arr, row, start, length = queue.popleft()
-            
-            counter = Counter(arr[start:start+length])
+
+            counter = Counter(arr[start:start + length])
             if row > 0:
-                prev = fptrs[row-1][-1]
-                fptrs[row-1].append(len(counter)+prev)
+                prev = fptrs[row - 1][-1]
+                fptrs[row - 1].append(len(counter) + prev)
             for key, val in counter.items():
                 fids[row].append(key)
                 if row + 1 < len(tensor.indices):
-                    queue.append((tensor.indices[row+1], row + 1, start, val))
+                    queue.append((tensor.indices[row + 1], row + 1, start, val))
                     start += val
-    
+
     return SparseTensorCSF(fptrs, fids, tensor.values, tensor.dense_shape)
 
 
-def coo_to_mode_generic(tensor: SparseTensorCOO, block_shape: tuple = ()) -> SparseTensorModeGeneric:
+def coo_to_mode_generic(tensor: SparseTensorCOO, block_shape: tuple = (), is_sparse=True) -> SparseTensorModeGeneric:
     if len(block_shape) == 0:
-        _, block_shape = __get_block_shapes(tensor.dense_shape, is_sparse=True)
-    elif len(block_shape) != len(tensor.dense_shape):
-        diff = len(tensor.dense_shape) - len(block_shape)
-        block_shape = [1 if i < diff else block_shape[i - diff] for i in range(len(tensor.dense_shape))]
+        _, block_shape = __get_block_shapes(tensor.dense_shape, is_sparse=is_sparse)
     elif len(block_shape) > len(tensor.dense_shape):
         raise Exception("Invalid block shape")
+    diff = len(tensor.dense_shape) - len(block_shape)
+    block_shape = [1 if i < diff else block_shape[i - diff] for i in range(len(tensor.dense_shape))]
+    indices_shape = np.ceil(np.array(tensor.dense_shape) / block_shape).astype(int)
 
+    block_indices = tensor.indices[:] // np.array(block_shape).reshape(-1, 1)
+    keys = np.ravel_multi_index(block_indices, indices_shape)
+    value_indices = tensor.indices[:] % np.array(block_shape).reshape(-1, 1)
     indices_dict = {}
-    blocks_dict = defaultdict(lambda: np.zeros(block_shape))
-    for i in range(tensor.indices.shape[1]):
-        block_indices = tensor.indices[:, i] // block_shape
-        value_indices = tensor.indices[:, i] % block_shape
-        key = block_indices.tobytes()
+    blocks_dict = defaultdict(list)
+    for i, key in enumerate(keys):
         if key not in indices_dict:
-            indices_dict[key] = block_indices
-        blocks_dict[key][tuple(value_indices)] = tensor.values[i]
+            indices_dict[key] = block_indices[:, i]
+        blocks_dict[key].append((*value_indices[:, i], tensor.values[i]))
 
     indices = np.zeros((len(indices_dict), len(block_shape)), dtype=int)
-    values = np.zeros((len(indices_dict), __get_size_from_shape(block_shape)))
+    values = [] * len(indices_dict)
     for i, key in enumerate(indices_dict):
         indices[i] = indices_dict[key]
-        values[i] = blocks_dict[key].reshape(-1)
+        values.append(np.array(blocks_dict[key]).transpose())
 
-    return SparseTensorModeGeneric(indices.transpose(), values, block_shape,
-                                   tensor.dense_shape)
+    return SparseTensorModeGeneric(indices.transpose(), values, tuple(block_shape), tensor.dense_shape)
 
 
 def mode_generic_to_ndarray(sparse_tensor: SparseTensorModeGeneric) -> np.ndarray:
-    indices = sparse_tensor.indices
-    values = sparse_tensor.values
-    block_shape = sparse_tensor.block_shape
-    block_size = __get_size_from_shape(block_shape)
-    dense_shape = sparse_tensor.dense_shape
-
-    if len(block_shape) == 0:
-        indices_shape = dense_shape
-    elif len(block_shape) == len(dense_shape):
-        indices_shape = (1,)
-    else:
-        indices_shape = dense_shape[:-len(block_shape)]
-    indices_size = __get_size_from_shape(indices_shape)
-    mul = [1] * len(indices_shape)
-    for i in range(len(mul) - 1, 0, -1):
-        mul[i - 1] = mul[i] * indices_shape[i]
-    sparse_filter = np.sum(indices * np.array(mul).reshape(-1, 1), axis=0)
-
-    tensor = np.zeros((indices_size, block_size))
-    tensor[sparse_filter] = values
-    return tensor.reshape(dense_shape)
+    sparse_coo = mode_generic_to_coo(sparse_tensor)
+    return np.array(
+        torch.sparse_coo_tensor(indices=torch.tensor(sparse_coo.indices), values=torch.tensor(sparse_coo.values),
+                                size=sparse_coo.dense_shape).to_dense())
 
 
 def sparse_to_coo(
@@ -150,29 +157,66 @@ def sparse_to_coo(
 
 
 def csr_to_coo(sparse_tensor: SparseTensorCSR) -> SparseTensorCOO:
-    csr = torch.sparse_csr_tensor(sparse_tensor.crow_indices, sparse_tensor.col_indices, sparse_tensor.values, sparse_tensor.dense_shape, dtype=torch.float32)
+    csr = torch.sparse_csr_tensor(sparse_tensor.crow_indices, sparse_tensor.col_indices, sparse_tensor.values,
+                                  sparse_tensor.flattened_shape, dtype=torch.float32)
     coo = csr.to_sparse_coo()
     indices = coo.indices().numpy()
-    values = coo.values().numpy()    
-    return SparseTensorCOO(indices, values, sparse_tensor.dense_shape)
+    values = coo.values().numpy()
+    if len(sparse_tensor.dense_shape) == 2:
+        if sparse_tensor.slice_tuple:
+            start_index, end_index = sparse_tensor.slice_tuple[0]
+            return SparseTensorCOO(indices[start_index:end_index], values[start_index:end_index], sparse_tensor.dense_shape)
+        else:
+            return SparseTensorCOO(indices, values, sparse_tensor.dense_shape)
+    else:
+        flat_indices = indices[0] * sparse_tensor.flattened_shape[-1] + indices[1]
+        restored_indices = np.array(np.unravel_index(flat_indices, sparse_tensor.dense_shape)).astype(np.int64)
+        if sparse_tensor.slice_tuple:
+            start_index, end_index = sparse_tensor.slice_tuple[0]
+            return SparseTensorCOO(restored_indices[start_index:end_index], values[start_index:end_index], sparse_tensor.dense_shape)
+        else:
+            return SparseTensorCOO(restored_indices, values, sparse_tensor.dense_shape)
 
 
 def csc_to_coo(sparse_tensor: SparseTensorCSC) -> SparseTensorCOO:
-    csc = torch.sparse_csc_tensor(sparse_tensor.ccol_indices, sparse_tensor.row_indices, sparse_tensor.values, sparse_tensor.dense_shape, dtype=torch.float32)
-    coo = csc.to_sparse_coo()
+    csc = torch.sparse_csc_tensor(sparse_tensor.ccol_indices, sparse_tensor.row_indices, sparse_tensor.values,
+                                  sparse_tensor.flattened_shape, dtype=torch.float32)
+    coo = csc.to_sparse_coo().coalesce()
+    print("coo: ", coo)
     indices = coo.indices().numpy()
     values = coo.values().numpy()
-    return SparseTensorCOO(indices, values, sparse_tensor.dense_shape)
+    if len(sparse_tensor.dense_shape) == 2:
+        if sparse_tensor.slice_tuple:
+            start_index, end_index = sparse_tensor.slice_tuple[0]
+            return SparseTensorCOO(indices[start_index:end_index], values[start_index:end_index], sparse_tensor.dense_shape)
+        else:
+            return SparseTensorCOO(indices, values, sparse_tensor.dense_shape)
+    else:
+        flat_indices = indices[0] * sparse_tensor.flattened_shape[1] + indices[1]
+        restored_indices = np.array(np.unravel_index(flat_indices, sparse_tensor.dense_shape)).astype(np.int64)
+        if sparse_tensor.slice_tuple:
+            start_index, end_index = sparse_tensor.slice_tuple[0]
+            return SparseTensorCOO(restored_indices[start_index:end_index], values[start_index:end_index], sparse_tensor.dense_shape)
+        else:
+            return SparseTensorCOO(restored_indices, values, sparse_tensor.dense_shape)
 
 def csf_to_coo(sparse_tensor: SparseTensorCSF) -> SparseTensorCOO:
+    
     expanded_indices = []
     expanded_values = []
-
-    # Loop through all values to expand each row back to its original indices
-    for val_index in range(len(sparse_tensor.values)):
-        path, value = sparse_tensor.expand_row(val_index)
-        expanded_indices.append(path)
-        expanded_values.append(value)
+    if sparse_tensor.slice_tuple:
+        left, right = sparse_tensor.get_value_range()
+        # Loop through the values in specific range(slice) to expand each row back to its original indices
+        for val_index in range(left, right):
+            path, value = sparse_tensor.expand_row(val_index)
+            expanded_indices.append(path)
+            expanded_values.append(value)
+    else:    
+        # Loop through all values to expand each row back to its original indices
+        for val_index in range(len(sparse_tensor.values)):
+            path, value = sparse_tensor.expand_row(val_index)
+            expanded_indices.append(path)
+            expanded_values.append(value)
 
     return SparseTensorCOO(np.array(expanded_indices).transpose(), np.array(expanded_values), sparse_tensor.dense_shape)
 
@@ -183,17 +227,18 @@ def mode_generic_to_coo(sparse_tensor: SparseTensorModeGeneric) -> SparseTensorC
     block_shape = sparse_tensor.block_shape
     dense_shape = sparse_tensor.dense_shape
 
-    indices_coo = []
-    values_coo = []
-    for i in range(indices.shape[1]):
-        global_base_indices = indices[:, i] * block_shape
-        block = values[i]
-        for j, val in enumerate(block):
-            if val == 0: continue
-            indices_coo.append(global_base_indices + np.unravel_index(j, block_shape))
-            values_coo.append(val)
+    indices_coo = [] * len(values)
+    values_coo = [] * len(values)
+    for i in range(len(values)):
+        global_base_indices = (indices[:, i] * block_shape).reshape(-1, 1)
+        indices_coo.append(np.array(values[i][:-1]).astype(int) + global_base_indices)
+        values_coo.append(np.array(values[i][-1]))
 
-    return SparseTensorCOO(np.array(indices_coo).transpose(), np.array(values_coo), dense_shape)
+    sparse_coo = SparseTensorCOO(np.hstack(indices_coo), np.hstack(values_coo), dense_shape)
+    order = np.ravel_multi_index(sparse_coo.indices, sparse_coo.dense_shape).argsort()
+    sparse_coo.indices = sparse_coo.indices[:, order]
+    sparse_coo.values = sparse_coo.values[order]
+    return sparse_coo
 
 
 def __get_block_shapes(tensor_shape: tuple, is_sparse: bool = False) -> tuple:
