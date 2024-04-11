@@ -480,12 +480,9 @@ class SparkUtil:
                     return False
             return True
 
-        indices = np.array(
-            filtered_df.select("index_array").rdd.filter(filter_predicate).map(
-                lambda row: row[0]).collect()).transpose()
-        values = [np.array(_) for _ in filtered_df.select("index_array", "value").rdd.filter(filter_predicate).map(
-            lambda row: row[1]).collect()]
-
+        data = filtered_df.select("index_array", "value").rdd.filter(filter_predicate).collect()
+        indices = np.array([row[0] for row in data]).transpose()
+        values = [np.array(row[1]) for row in data]
         return SparseTensorModeGeneric(indices, values, tuple(block_shape), tuple(dense_shape))
 
     @staticmethod
