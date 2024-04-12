@@ -142,6 +142,24 @@ class SparseTensorCSF:
 
         return path, self.values[original_val_index]
     
+    def to_coo(self):
+        dim = len(self.fids)
+        indices = [[] for _ in range(dim)]
+        count = [[0]*len(self.fids[i]) for i in range(dim)]
+        count[dim-1] = [1] * len(self.values)
+        indices[dim-1] = self.fids[dim-1]
+
+        for level in reversed(range(0, dim-1)):
+            for element in range(len(self.fids[level])):
+                left = self.fptrs[level][element]
+                right = self.fptrs[level][element+1]
+                count[level][element] = sum(count[level+1][left:right])
+                subarray = [self.fids[level][element]] * count[level][element]
+                indices[level].append(subarray)
+            indices[level] = np.hstack(indices[level])
+
+        return SparseTensorCOO(np.array(indices), np.array(self.values), self.dense_shape)
+    
     def get_value_range(self):
         first_dimension = self.slice_tuple[0]
         left = first_dimension[0]

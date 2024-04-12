@@ -211,14 +211,10 @@ def csf_to_coo(sparse_tensor: SparseTensorCSF) -> SparseTensorCOO:
             path, value = sparse_tensor.expand_row(val_index)
             expanded_indices.append(path)
             expanded_values.append(value)
-    else:    
-        # Loop through all values to expand each row back to its original indices
-        for val_index in range(len(sparse_tensor.values)):
-            path, value = sparse_tensor.expand_row(val_index)
-            expanded_indices.append(path)
-            expanded_values.append(value)
-
-    return SparseTensorCOO(np.array(expanded_indices).transpose(), np.array(expanded_values), sparse_tensor.dense_shape)
+        return SparseTensorCOO(np.array(expanded_indices).transpose(), np.array(expanded_values), sparse_tensor.dense_shape)
+    else: 
+        return sparse_tensor.to_coo()
+    
 
 
 def mode_generic_to_coo(sparse_tensor: SparseTensorModeGeneric) -> SparseTensorCOO:
