@@ -130,7 +130,7 @@ class SparkUtil:
         indices = sparse_tensor.indices
         values = sparse_tensor.values
         layout = sparse_tensor.layout.name
-        dense_shape = list(sparse_tensor.dense_shape)
+        dense_shape = sparse_tensor.dense_shape
         data = [{
             "id": tensor_id,
             "layout": layout,
@@ -381,7 +381,6 @@ class SparkUtil:
     def __read_coo(self, tensor_id: str, slice_tuple: tuple) -> SparseTensorCOO:
         df = self.spark.read.format("delta").load(SparkUtil.COO_TABLE)
         filtered_df = df.filter(df.id == tensor_id)
-        # print(filtered_df.show())
         selected_data = filtered_df.select(
             "indices", "value", "dense_shape").collect()
         dense_shape = tuple(
