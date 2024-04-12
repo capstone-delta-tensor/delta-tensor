@@ -418,7 +418,6 @@ class SparkUtil:
                                slice_tuple = self.__parse_slice_tuple(slice_tuple, dense_shape) if slice_tuple else None)
 
     def __read_csf(self, tensor_id: str, slice_tuple: tuple) -> SparseTensorCSF:
-        # TODO @kevinvan13 support slicing operation
         # Extract the number of dimensions from the tensor ID
         num_dimensions = int(tensor_id[-2:])  # The first two characters represent the dimensions
         path = f"{SparkUtil.CSF_TABLE}/dim_{num_dimensions}/"
