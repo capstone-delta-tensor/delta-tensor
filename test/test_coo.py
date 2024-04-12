@@ -25,6 +25,9 @@ class TestCOO(unittest.TestCase):
             sparse, layout=SparseTensorLayout.COO)
         tensor = self.delta_tensor.get_sparse_tensor_by_id(
             t_id, layout=SparseTensorLayout.COO)
+        order = np.ravel_multi_index(sparse.indices, sparse.dense_shape).argsort()
+        sparse.indices = sparse.indices[:, order]
+        sparse.values = sparse.values[order]
         self.assertTrue(sparse == tensor)
 
     def test_benchmark_uber_dataset(self):
