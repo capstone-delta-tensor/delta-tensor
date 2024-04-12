@@ -28,8 +28,6 @@ class TestCOO(unittest.TestCase):
         order = np.ravel_multi_index(sparse.indices, sparse.dense_shape).argsort()
         sparse.indices = sparse.indices[:, order]
         sparse.values = sparse.values[order]
-        print(sparse)
-        print(tensor)
         self.assertTrue(sparse == tensor)
 
     def test_benchmark_uber_dataset(self):
