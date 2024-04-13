@@ -389,7 +389,7 @@ class SparkUtil:
 
         def filter_predicate(row):
             for i, s in enumerate(slice_tuple):
-                if s[0] <= row[0][i]:
+                if s[0] <= row[0][i] < s[1]:
                     continue
                 else:
                     return False
