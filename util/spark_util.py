@@ -381,10 +381,8 @@ class SparkUtil:
     def __read_coo(self, tensor_id: str, slice_tuple: tuple) -> SparseTensorCOO:
         df = self.spark.read.format("delta").load(SparkUtil.COO_TABLE)
         filtered_df = df.filter(df.id == tensor_id)
-        selected_data = filtered_df.select(
-            "indices", "value", "dense_shape").collect()
-        dense_shape = tuple(
-            selected_data[0]['dense_shape']) if selected_data else None
+        dense_shape_row = filtered_df.select("dense_shape").first()
+        dense_shape = tuple(dense_shape_row['dense_shape']) if dense_shape_row else None
         slice_tuple = self.__parse_slice_tuple(slice_tuple, dense_shape)
 
         def filter_predicate(row):
