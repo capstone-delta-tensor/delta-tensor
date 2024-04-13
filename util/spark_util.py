@@ -381,16 +381,25 @@ class SparkUtil:
     def __read_coo(self, tensor_id: str, slice_tuple: tuple) -> SparseTensorCOO:
         df = self.spark.read.format("delta").load(SparkUtil.COO_TABLE)
         filtered_df = df.filter(df.id == tensor_id)
-        selected_data = filtered_df.select(
-            "indices", "value", "dense_shape").collect()
-        dense_shape = tuple(
-            selected_data[0]['dense_shape']) if selected_data else None
-        values = [int(row['value']) if row['value'].is_integer()
-                  else row['value'] for row in selected_data]
+        dense_shape_row = filtered_df.select("dense_shape").first()
+        dense_shape = tuple(dense_shape_row['dense_shape']) if dense_shape_row else None
+        slice_tuple = self.__parse_slice_tuple(slice_tuple, dense_shape)
+
+        def filter_predicate(row):
+            for i, s in enumerate(slice_tuple):
+                if s[0] <= row[0][i] < s[1]:
+                    continue
+                else:
+                    return False
+            return True
+
+        data = filtered_df.select("indices", "value").rdd.filter(
+            filter_predicate).collect()
+        values = [row['value'] for row in data]
         values = np.array(values)
-        indices = [row['indices'] for row in selected_data]
+        indices = [row['indices'] for row in data]
         indices = np.array(indices).transpose()
-        tensor = SparseTensorCOO(indices, values, dense_shape)
+        tensor = SparseTensorCOO(indices, values, tuple(dense_shape))
         order = np.ravel_multi_index(tensor.indices, dense_shape).argsort()
         tensor.indices = tensor.indices[:, order]
         tensor.values = tensor.values[order]
