@@ -1,4 +1,5 @@
 import io
+import time
 import uuid
 
 import pyspark
@@ -61,6 +62,7 @@ class SparkUtil:
         tensor_id = str(uuid.uuid4())
         dim_count = tensor.ndim
         dimensions = list(tensor.shape)
+        encodeing_start = time.time()
         data = [{
             "id": tensor_id,
             "chunk": chunk,
@@ -77,6 +79,7 @@ class SparkUtil:
             StructField("chunk_dim_count", IntegerType()),
             StructField("dimensions", ArrayType(IntegerType())),
         ])
+        print(f"FTSF encoding time: {time.time() - encodeing_start} seconds")
 
         df = self.spark.createDataFrame(data, schema)
         df.write.format("delta").mode("append").save(SparkUtil.FTSF_TABLE)

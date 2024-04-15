@@ -1,10 +1,11 @@
 import io
+import tempfile
 
 from api.delta_tensor import *
 from util.data_util import *
 from random import randint
 
-NUMBER_OF_IMG = 7000
+NUMBER_OF_IMG = 10000
 SLICE_SIZE = 100
 S3_BINARY_KEY = 'tmp/dense_tensor_binary'
 S3_FTSF_PREFIX = 'flattened'
@@ -23,13 +24,17 @@ def benchmark_direct_serialization() -> None:
     print("Direct serialization test for the ffhq dataset")
     tensor = read_ffhq_as_tensor(NUMBER_OF_IMG)
 
-    start = time.time()
-    with io.BytesIO() as f:
-        np.save(f, tensor)
-        f.seek(0)
-        byte_data = f.read()
-    put_object_to_s3(byte_data, S3_BINARY_KEY)
-    print(f"Bulk write time: {time.time() - start} seconds")
+    fd, path = tempfile.mkstemp()
+    try:
+        with os.fdopen(fd, 'w') as tmp:
+            np.save(tmp, tensor)
+            GB = 1024 ** 3
+            config = TransferConfig(multipart_threshold=5*GB)
+            start = time.time()
+            build_s3_client().upload_file(tmp, get_s3_bucket, S3_BINARY_KEY, Config=config)
+            print(f"Bulk write time: {time.time() - start} seconds")
+    finally:
+        os.remove(path)
 
     print(f"tensor storage size: {get_size(get_s3_location(S3_BINARY_KEY))}")
 
