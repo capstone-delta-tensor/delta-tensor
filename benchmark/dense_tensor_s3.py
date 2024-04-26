@@ -87,7 +87,8 @@ def benchmark_ffhq_part_read(tensor_id: str, slice_dim_start: int, slice_dim_end
     delta_tensor = DeltaTensor(SparkUtil())
 
     start = time.time()
-    tensor = delta_tensor.get_dense_tensor_by_id(tensor_id, ((slice_dim_start, slice_dim_end), (0,3), (0,512), (0,512)))
+    tensor = delta_tensor.get_dense_tensor_by_id(tensor_id,
+                                                 ((slice_dim_start, slice_dim_end), (0, 3), (0, 512), (0, 512)))
     print(f"Slice read time: {time.time() - start} seconds")
     delta_tensor.spark_util.stop_session()
     return tensor
@@ -104,7 +105,6 @@ if __name__ == '__main__':
     bulk_ftsf = benchmark_ffhq_bulk_read(t_id)
 
     print(f"Data consistency {np.array_equal(bulk_direct, bulk_ftsf)}")
-
 
     slice_dim_start = randint(0, NUMBER_OF_IMG - SLICE_SIZE)
     slice_dim_end = slice_dim_start + SLICE_SIZE

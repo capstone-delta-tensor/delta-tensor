@@ -27,7 +27,7 @@ class DeltaTensor:
         id = self.spark_util.write_tensor(sparse_tensor, is_sparse=True)
         print(f"Time to write tensor {time.time() - start_time} seconds")
         return id
-    
+
     @overload
     def get_dense_tensor_by_id(self, id: str, slice: tuple) -> np.ndarray:
         ...
@@ -36,7 +36,7 @@ class DeltaTensor:
     def get_dense_tensor_by_id(self, id: str, slice: str) -> np.ndarray:
         ...
 
-    def get_dense_tensor_by_id(self, id: str, slice = ()) -> np.ndarray:
+    def get_dense_tensor_by_id(self, id: str, slice=()) -> np.ndarray:
         if isinstance(slice, str):
             slice = self.__parse_slice_expr(slice)
 

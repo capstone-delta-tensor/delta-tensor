@@ -72,6 +72,7 @@ def benchmark_ffhq_bulk_read(tensor_id: str) -> np.ndarray:
     delta_tensor.spark_util.stop_session()
     return tensor
 
+
 def benchmark_direct_deserialization_and_slice(slice_dim_start: int, slice_dim_end: int) -> np.ndarray:
     print("=======================================")
     print("Direct deserialization test for the ffhq dataset")
@@ -82,13 +83,15 @@ def benchmark_direct_deserialization_and_slice(slice_dim_start: int, slice_dim_e
     print(f"Slice read time: {time.time() - start} seconds")
     return deserialized_tensor
 
+
 def benchmark_ffhq_part_read(tensor_id: str, slice_dim_start: int, slice_dim_end: int) -> np.ndarray:
     print("=======================================")
     print("FTSF part read test for the ffhq dataset")
     delta_tensor = DeltaTensor(SparkUtil())
 
     start = time.time()
-    tensor = delta_tensor.get_dense_tensor_by_id(tensor_id, ((slice_dim_start, slice_dim_end), (0,3), (0,512), (0,512)))
+    tensor = delta_tensor.get_dense_tensor_by_id(tensor_id,
+                                                 ((slice_dim_start, slice_dim_end), (0, 3), (0, 512), (0, 512)))
     print(f"Slice read time: {time.time() - start} seconds")
     delta_tensor.spark_util.stop_session()
     return tensor

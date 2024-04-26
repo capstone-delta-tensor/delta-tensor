@@ -63,8 +63,8 @@ def get_size(path: str) -> str:
 
 def build_s3_client():
     return boto3.client("s3", aws_access_key_id=config["spark.hadoop.fs.s3a.access.key"],
-                       aws_secret_access_key=config["spark.hadoop.fs.s3a.secret.key"],
-                       aws_session_token=config["spark.hadoop.fs.s3a.session.token"]) 
+                        aws_secret_access_key=config["spark.hadoop.fs.s3a.secret.key"],
+                        aws_session_token=config["spark.hadoop.fs.s3a.session.token"])
 
 
 def put_object_to_s3(byte_data: bytes, key: str, is_large: bool = False, bucket: str = get_s3_bucket()) -> None:
@@ -73,10 +73,10 @@ def put_object_to_s3(byte_data: bytes, key: str, is_large: bool = False, bucket:
         with open(file_path, 'wb') as f:
             f.write(byte_data)
         GB = 1024 ** 3
-        config = TransferConfig(multipart_threshold=5*GB)
+        config = TransferConfig(multipart_threshold=5 * GB)
         build_s3_client().upload_file(file_path, bucket, key, Config=config)
         return
-    
+
     build_s3_client().put_object(Body=byte_data, Bucket=bucket, Key=key)
 
 
@@ -90,4 +90,4 @@ def delete_s3_prefix(prefix: str) -> None:
     if 'Contents' not in response:
         return
     for object in response['Contents']:
-            s3.delete_object(Bucket=get_s3_bucket(), Key=object['Key'])
+        s3.delete_object(Bucket=get_s3_bucket(), Key=object['Key'])

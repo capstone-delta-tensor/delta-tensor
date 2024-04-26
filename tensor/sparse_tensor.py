@@ -29,9 +29,10 @@ class SparseTensorCOO:
                     np.array_equal(self.values, other.values))
         return False
 
+
 class SparseTensorCSR:
     def __init__(self, values: np.ndarray, col_indices: np.ndarray, crow_indices: np.ndarray,
-                dense_shape: tuple, flattened_shape: torch.Size, slice_tuple: tuple = None):
+                 dense_shape: tuple, flattened_shape: torch.Size, slice_tuple: tuple = None):
         assert values.ndim == 1, "Values should be a 1D array."
         assert col_indices.ndim == 1, "Column indices should be a 1D array."
         assert crow_indices.ndim == 1, "Row start indices should be a 1D array."
@@ -47,9 +48,10 @@ class SparseTensorCSR:
         return (f"SparseTensor(\nvalues=\n{self.values},\ncol_indices=\n{self.col_indices},\n"
                 f"crow_indices=\n{self.crow_indices},\ndense_shape={self.dense_shape},\nflattened_shape={self.flattened_shape},\nlayout={self.layout})")
 
+
 class SparseTensorCSC:
     def __init__(self, values: np.ndarray, row_indices: np.ndarray, ccol_indices: np.ndarray,
-                dense_shape: tuple, flattened_shape: torch.Size, slice_tuple: tuple = None):
+                 dense_shape: tuple, flattened_shape: torch.Size, slice_tuple: tuple = None):
         assert values.ndim == 1, "Values should be a 1D array."
         assert row_indices.ndim == 1, "Row indices should be a 1D array."
         assert ccol_indices.ndim == 1, "Column start indices should be a 1D array."
@@ -65,8 +67,10 @@ class SparseTensorCSC:
         return (f"SparseTensor(\nvalues=\n{self.values},\nrow_indices=\n{self.row_indices},\n"
                 f"ccol_indices=\n{self.ccol_indices},\ndense_shape={self.dense_shape},\nflattened_shape={self.flattened_shape},\nlayout={self.layout})")
 
+
 class SparseTensorCSF:
-    def __init__(self, fptrs: np.ndarray, fids: np.ndarray, values: np.ndarray, dense_shape: tuple, slice_tuple: tuple = None):
+    def __init__(self, fptrs: np.ndarray, fids: np.ndarray, values: np.ndarray, dense_shape: tuple,
+                 slice_tuple: tuple = None):
         self.fptrs = fptrs
         self.fids = fids
         self.values = values
@@ -141,25 +145,25 @@ class SparseTensorCSF:
                 val_index = left
 
         return path, self.values[original_val_index]
-    
+
     def to_coo(self):
         dim = len(self.fids)
         indices = [[] for _ in range(dim)]
-        count = [[0]*len(self.fids[i]) for i in range(dim)]
-        count[dim-1] = [1] * len(self.values)
-        indices[dim-1] = self.fids[dim-1]
+        count = [[0] * len(self.fids[i]) for i in range(dim)]
+        count[dim - 1] = [1] * len(self.values)
+        indices[dim - 1] = self.fids[dim - 1]
 
-        for level in reversed(range(0, dim-1)):
+        for level in reversed(range(0, dim - 1)):
             for element in range(len(self.fids[level])):
                 left = self.fptrs[level][element]
-                right = self.fptrs[level][element+1]
-                count[level][element] = sum(count[level+1][left:right])
+                right = self.fptrs[level][element + 1]
+                count[level][element] = sum(count[level + 1][left:right])
                 subarray = [self.fids[level][element]] * count[level][element]
                 indices[level].append(subarray)
             indices[level] = np.hstack(indices[level])
 
         return SparseTensorCOO(np.array(indices), np.array(self.values), self.dense_shape)
-    
+
     def get_value_range(self):
         first_dimension = self.slice_tuple[0]
         left = first_dimension[0]
@@ -170,10 +174,6 @@ class SparseTensorCSF:
             right = self.fptrs[level][right]
 
         return (left, right)
-
-
-
-
 
 
 class SparseTensorModeGeneric:
